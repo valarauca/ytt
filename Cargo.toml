@@ -1,3 +1,4 @@
 [workspace]
 resolver = "2"
-members = ["runtime-model"]
+exclude = ["deps/mirror-mirror"]
+members = ["runtime-model", "in-tree/mirror-mirror-opinions"]
