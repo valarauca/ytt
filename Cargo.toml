@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
 exclude = ["deps/mirror-mirror"]
-members = ["runtime-model", "in-tree/mirror-mirror-opinions"]
+members = ["runtime-model", "in-tree/mirror-mirror-opinions", "in-tree/tree"]

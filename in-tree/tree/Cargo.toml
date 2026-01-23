@@ -1,0 +1,9 @@
+[package]
+name = "tree"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+scc = "3.4.14"
+sdd = "4.5.3"
+seahash = "4.1.0"
