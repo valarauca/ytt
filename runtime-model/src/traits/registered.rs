@@ -9,6 +9,7 @@ use tower_service::{Service};
 use bytes::{
     Bytes,
 };
+use mirror_mirror::Reflect;
 use http::{
     request::{Request as HttpRequest},
     response::{Response as HttpResponse},
@@ -20,6 +21,12 @@ use reqwest::{
 };
 
 use super::errors::{Err};
+
+/// Generalized configuration
+pub type BoxedConfig = Box<dyn Reflect +'static + Send>;
+
+/// Generalized future
+pub type BoxedFuture<O> = Box<dyn Future<Output=O> + 'static + Send>;
 
 /// A basic "this is a service" type of thing.
 pub type ServiceObj<Req,Res,E,EE> = Box<dyn Service<Req,Response=Res,Error=E,Future=Pin<Box<dyn Future<Output=Result<Res,EE>> + 'static + Send>>>>;
@@ -37,6 +44,9 @@ pub trait RegisteredService<E: Err>: 'static + Sync + Any {
 
     /// Returns the roll this service futfills
     fn get_roles(&self) -> &[ServiceKind];
+
+    /// Initialize a reload.
+    fn reload(&self, config: Box<dyn Reflect + 'static>) -> Result<BoxedFuture<Result<(),E>>,E>;
 
     /// Return a handle to an http client
     fn get_http_client(&self) -> Result<ServiceObj<HttpReqwestRequest,HttpReqwestResponse,E,E>,E>
