@@ -1,0 +1,3 @@
+[submodule "deps/mirror-mirror"]
+	path = deps/mirror-mirror
+	url = git@github.com:/valarauca/mirror-mirror.git
