@@ -2,9 +2,10 @@ use std::{
     borrow::{Borrow},
     hash::{Hash,BuildHasherDefault},
     sync::atomic::{Ordering},
+    collections::{HashSet,HashMap},
 };
 use scc::{
-    AtomicShared, Guard, HashSet, Shared, Tag,
+    AtomicShared, Guard, Shared, Tag,
     hash_index::{Entry, HashIndex},
     Equivalent,
 };
@@ -65,13 +66,6 @@ where
         ensure_not_null(occupied.get(), g)
     }
 
-
-    /*
-    pub(crate) fn get_here_value<'g>(&'g self, guard: &'g Guard) -> Ptr<'g,Node<K,V>> {
-        self.here.load(Ordering::Acquire,guard)
-    }
-    */
-
     pub(crate) fn set_here_value<'g>(&self, g: &'g Guard, value: V) -> Option<Shared<V>> {
         let mut new = Shared::new(value);
         let mut old = self.here.load(Ordering::Relaxed, &g);
@@ -127,6 +121,54 @@ where
                     continue;
                 }
             };
+        }
+    }
+}
+impl<K,V> Node<K,V>
+where
+    K: 'static + Send + Sync + Hash + Eq + Clone,
+    V: 'static + Send + Sync,
+{
+    pub(crate) fn list_keys<'g>(&self, g: &'g Guard) -> HashSet<K,BuildHasherDefault<SeaHasher>> {
+        let mut set = HashSet::default();
+        if self.children.is_empty() {
+            // avoid atomic overhead of creating an iteration entry
+            return set;
+        }
+        self.children.iter_sync(|key,_| -> bool {
+            set.insert(key.clone());
+            true
+        });
+        set
+    }
+
+    pub(crate) fn list_keys_recursive<'g>(&self, g: &'g Guard) -> RecursiveListing<K> {
+        let mut listing = RecursiveListing::<K>::default();
+        if self.children.is_empty() {
+            // avoid atomic overhead of creating an iteration entry
+            return listing;
+        }
+        self.children.iter_sync(|key: &K, value: &AtomicShared<Node<K,V>>| -> bool {
+            let child_ptr = value.load(Ordering::Acquire, g);
+            let child_listing = child_ptr
+                .as_ref()
+                .map(|p| p.list_keys_recursive(g))
+                .unwrap_or_else(RecursiveListing::default);
+            listing.children.insert(key.clone(), child_listing);
+            true
+        });
+        listing
+    }
+}
+
+pub struct RecursiveListing<K> {
+    pub children: HashMap<K,Self,BuildHasherDefault<SeaHasher>>,
+}
+impl<K> Default for RecursiveListing<K>
+{
+    fn default() -> Self {
+        Self {
+            children: HashMap::default(),
         }
     }
 }

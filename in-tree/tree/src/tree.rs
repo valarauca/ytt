@@ -2,15 +2,17 @@ use std::{
     borrow::{Borrow},
     hash::{Hash,BuildHasherDefault},
     sync::{Arc,atomic::{Ordering}},
+    collections::{HashSet},
 };
 use scc::{
-    AtomicShared, Guard, HashSet, Shared, Tag,
+    AtomicShared, Guard, Shared, Tag,
     hash_index::{Entry, HashIndex},
     Equivalent,
 };
+use seahash::SeaHasher;
 use sdd::Ptr;
 use crate::{
-    node::{Node,ensure_not_null},
+    node::{Node,ensure_not_null,RecursiveListing},
     guarded::{guarded},
 };
 
@@ -112,6 +114,33 @@ where
             let node_ref = ptr.as_ref()?;
             node_ref.remove_here_value(g)
         })
+    }
+
+    pub(crate) fn list_children<'i,I,Q>(self: Arc<Self>,path: I) -> Option<HashSet<K,BuildHasherDefault<SeaHasher>>>
+    where
+        K: Clone + Borrow<Q>,
+        I: IntoIterator<Item=&'i Q> + 'i,
+        Q: Eq + Equivalent<K> + Hash + ?Sized + 'i,
+    {
+        guarded(move |g| {
+            let ptr = self.walk_to_location(g,path,None)?;
+            let node_ref = ptr.as_ref()?;
+            Some(node_ref.list_keys(g))
+        })
+    }
+
+    pub(crate) fn list_children_recursive<'i,I,Q>(self: Arc<Self>, path: I) -> Option<RecursiveListing<K>>
+    where
+        K: Clone + Borrow<Q>,
+        I: IntoIterator<Item=&'i Q> + 'i,
+        Q: Eq + Equivalent<K> + Hash + ?Sized + 'i,
+    {
+        guarded(move |g| {
+            let ptr = self.walk_to_location(g,path,None)?;
+            let node_ref = ptr.as_ref()?;
+            Some(node_ref.list_keys_recursive(g))
+        })
+
     }
 
     /*
