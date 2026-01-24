@@ -6,11 +6,14 @@ use std::{
 };
 use scc::{
     AtomicShared, Guard, Shared, Tag,
-    hash_index::{Entry, HashIndex},
+    hash_index::HashIndex,
     Equivalent,
 };
 use sdd::Ptr;
 use seahash::SeaHasher;
+
+#[cfg(test)]
+use crate::guarded::guarded;
 
 
 pub(crate) struct Node<K,V>
@@ -18,8 +21,8 @@ where
     K: 'static + Send + Sync + Hash + Eq,
     V: 'static + Send + Sync,
 {
-    pub(crate) children: HashIndex<K, AtomicShared<Node<K,V>>, BuildHasherDefault<SeaHasher>>,
-    pub(crate) here: AtomicShared<V>,
+    children: HashIndex<K, AtomicShared<Node<K,V>>, BuildHasherDefault<SeaHasher>>,
+    here: AtomicShared<V>,
 }
 impl<K,V> Default for Node<K,V>
 where
@@ -38,13 +41,6 @@ where
     K: 'static + Send + Sync + Hash + Eq,
     V: 'static + Send + Sync,
 {
-    pub fn new() -> Self {
-        Self {
-            children: HashIndex::default(),
-            here: AtomicShared::null(),
-        }
-    }
-   
     pub(crate) fn get_child_node_ptr<'g, Q>(&self, g: &'g Guard, key: &Q) -> Option<Ptr<'g,Node<K,V>>>
     where
         Q: Eq + ?Sized + Equivalent<K> + Hash,
@@ -53,6 +49,14 @@ where
         self.children
             .get_sync(key)
             .map(|occ| occ.get().load(Ordering::Acquire, g))
+    }
+
+    pub(crate) fn has_child<'i,Q>(&self, item: &'i Q) -> bool
+    where
+        Q: Eq + ?Sized + Equivalent<K> + Hash,
+        K: Borrow<Q>,
+    {
+        self.children.contains(item)
     }
 
     pub(crate) fn upsert_child_key<'g, 'i, Q>(&'g self, g: &'g Guard, item: &'i Q) -> Ptr<'g,Node<K,V>>
@@ -66,11 +70,14 @@ where
         ensure_not_null(occupied.get(), g)
     }
 
+    pub(crate) fn get_here_value<'g>(&self, g: &'g Guard) -> Option<Shared<V>> {
+        self.here.load(Ordering::Acquire,g).get_shared()
+    }
+
     pub(crate) fn set_here_value<'g>(&self, g: &'g Guard, value: V) -> Option<Shared<V>> {
         let mut new = Shared::new(value);
         let mut old = self.here.load(Ordering::Relaxed, &g);
         loop {
-            let guard = Guard::new();
             match self.here.compare_exchange_weak(
                 old,
                 (Some(new), Tag::None),
@@ -99,7 +106,6 @@ where
         let mut new: Option<Shared<V>> = None;
         let mut old = self.here.load(Ordering::Relaxed, &g);
         loop {
-            let guard = Guard::new();
             match self.here.compare_exchange_weak(
                 old,
                 (new, Tag::None),
@@ -129,7 +135,7 @@ where
     K: 'static + Send + Sync + Hash + Eq + Clone,
     V: 'static + Send + Sync,
 {
-    pub(crate) fn list_keys<'g>(&self, g: &'g Guard) -> HashSet<K,BuildHasherDefault<SeaHasher>> {
+    pub(crate) fn list_keys<'g>(&self) -> HashSet<K,BuildHasherDefault<SeaHasher>> {
         let mut set = HashSet::default();
         if self.children.is_empty() {
             // avoid atomic overhead of creating an iteration entry
@@ -200,3 +206,75 @@ where
         };
     }
 }
+
+
+
+#[test]
+fn validate_here_field_modification() {
+
+    let node = Node::<String,usize>::default();
+
+    /*
+     * Validate initial state is null
+     *
+     */
+    assert!(node.here.is_null(Ordering::Acquire));
+    guarded(|g| -> () {
+        assert!(node.get_here_value(g).is_none());
+    });
+
+    /*
+     * Validate we can set values
+     *
+     */
+    guarded(|g| -> () {
+        let out = node.set_here_value(g, 5usize);
+        assert!(out.is_none());
+    });
+    assert!(!node.here.is_null(Ordering::Acquire));
+    guarded(|g| -> () {
+        assert_eq!(*node.get_here_value(g).unwrap(),5usize);
+    });
+    assert!(!node.here.is_null(Ordering::Acquire));
+
+    /*
+     * Validate they can be invalidated
+     *
+     */
+    guarded(|g| -> () {
+        assert_eq!(*node.remove_here_value(g).unwrap(), 5usize);
+    });
+    assert!(node.here.is_null(Ordering::Acquire));
+    guarded(|g| -> () {
+        assert!(node.get_here_value(g).is_none());
+    });
+}
+
+#[test]
+fn validate_children() {
+
+    /*
+     * Initially empty state
+     *
+     */
+    let node = Node::<String,usize>::default();
+    assert!(node.children.is_empty());
+    guarded(|g| -> () {
+        assert!(node.get_child_node_ptr(g,"foo").is_none());
+        assert!(node.list_keys().is_empty());
+    });
+    guarded(|g| -> () {
+        let ptr = node.upsert_child_key(g,"foo");
+        assert!(!ptr.is_null());
+    });
+    assert!(!node.children.is_empty());
+    guarded(|g| -> () {
+        assert!(node.get_child_node_ptr(g,"foo").is_some());
+        assert!(!node.get_child_node_ptr(g,"foo").unwrap().is_null());
+        let set = node.list_keys();
+        assert!(set.len() == 1);
+        assert!(set.contains("foo"));
+    });
+}
+
+
