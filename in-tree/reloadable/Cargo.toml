@@ -4,8 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-mirror-mirror = { path = "../../deps/mirror-mirror/crates/mirror-mirror" }
-mirror-mirror-opinions = { path = "../mirror-mirror-opinions" }
 futures-util = { version = "0.3.31", default-features = false, features = ["alloc"] }
 tokio = { version = "1.49.0", features = ["sync"] }
 tower = { version = "0.5.3", features = ["util"] }

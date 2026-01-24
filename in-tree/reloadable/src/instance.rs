@@ -1,13 +1,13 @@
 use std::{
     task::{Poll, Context},
+    pin::Pin,
+    future::{Future,ready,Ready},
 };
 
 use tokio::sync::watch::{self, Sender};
 use tower::{Service,ServiceExt};
-use futures_util::future::{MapOk, TryFutureExt};
+use futures_util::future::{FutureExt,Either};
 
-use mirror_mirror::{Reflect};
-use mirror_mirror_opinions::update_reflect;
 
 use crate::{
     channel::Channel,
@@ -17,18 +17,17 @@ use crate::{
 pub struct ReloadingInstance<C, S, F>
 where
     S: Clone + Send + Sync + 'static,
-    C: Clone + Reflect + 'static,
+    C: Clone + PartialEq + 'static,
     F: Service<C, Response = S>,
 {
     pub(crate) config: C,
     pub(crate) sender: Sender<Result<S, ()>>,
     pub(crate) factory: F,
-    pub(crate) paused: bool,
 }
 impl<C, S, F> ReloadingInstance<C, S, F>
 where
     S: Clone + Send + Sync + 'static,
-    C: Clone + Reflect + 'static,
+    C: Clone + PartialEq + 'static,
     F: Service<C, Response = S>,
 {
     /// Create a new ReloadingInstance with initial configuration
@@ -41,12 +40,11 @@ where
             config,
             sender, 
             factory,
-            paused: false,
         })
     }
     
     /// Get a Channel for subscribing to service updates
-    pub fn channel(&self) -> Channel<S> {
+    pub(crate) fn channel(&self) -> Channel<S> {
         Channel::from(self.sender.clone())
     }
     
@@ -62,36 +60,35 @@ where
 
 impl<C, S, F> Service<C> for ReloadingInstance<C, S, F>
 where
-    C: Clone + Reflect + Send + 'static,
+    C: Clone + PartialEq + Send + 'static,
     S: Clone + Send + Sync + 'static,
-    F: Service<C, Response = S> + Send + 'static,
+    F: Service<C, Response = S> + Clone + Send + 'static,
     F::Future: Send + 'static,
     F::Error: Send + 'static,
 {
     type Response = ();
     type Error = F::Error;
-    type Future = MapOk<F::Future, Box<dyn FnOnce(S) -> () + Send>>;
+    type Future = Either<Ready<Result<(),Self::Error>>,Pin<Box<dyn Future<Output=Result<(),Self::Error>> + 'static + Send>>>;
     
-    fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        if !self.paused {
-			// kick clients into `Uninitialized` status
-            let _ = self.sender.send(Err(()));
-            self.paused = true;
-        }
-        self.factory.poll_ready(ctx)
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
     
     fn call(&mut self, req: C) -> Self::Future {
-        self.paused = false;
-        let sender = self.sender.clone();
-        let lambda: Box<dyn FnOnce(S) -> () + Send> = Box::new(move |arg: S| -> () {
-            let _ = sender.send(Ok(arg));
-            ()
-        });
-
-        // errors can only occur if our config type can change
-        // which it shouldn't as our stuff is statically compiled.
-        update_reflect(&mut self.config, &req).unwrap();
-        self.factory.call(self.config.clone()).map_ok(lambda)
+        if req == self.config {
+            ready(Result::<(),Self::Error>::Ok(())).left_future()
+        } else {
+            self.config.clone_from(&req);
+            let _ = self.sender.send_replace(Err(()));
+            let tx = self.sender.clone();
+            let mut f = self.factory.clone();
+            let x: Pin<Box<dyn Future<Output=Result<(),Self::Error>> + 'static + Send>> = Box::pin(async move {
+                f.ready().await?;
+                let out = f.call(req).await?;
+                let _ = tx.send_replace(Ok(out));
+                Ok(())
+            });
+            x.right_future()
+        }
     }
 }

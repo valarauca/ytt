@@ -66,11 +66,12 @@ impl crate::reloadable::Err for SimpleServiceError {
     }
 }
 
-#[derive(Clone, Default, Debug, mirror_mirror::Reflect)]
+#[derive(Clone, Default, Debug, PartialEq)]
 struct TestConfig {
     value: usize,
 }
 
+#[derive(Clone)]
 struct SimpleFactory;
 
 impl Service<TestConfig> for SimpleFactory {
