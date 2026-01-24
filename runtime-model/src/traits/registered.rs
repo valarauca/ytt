@@ -1,5 +1,4 @@
 use std::{
-    any::Any,
     pin::Pin,
     future::Future,
     convert::Infallible,
@@ -23,7 +22,7 @@ use reqwest::{
 use super::errors::{Err};
 
 /// Generalized configuration
-pub type BoxedConfig = Box<dyn Reflect +'static + Send>;
+pub type BoxedConfig = Box<dyn Reflect +'static + Send + Send>;
 
 /// Generalized future
 pub type BoxedFuture<O> = Box<dyn Future<Output=O> + 'static + Send>;
@@ -41,7 +40,7 @@ pub enum ServiceKind {
 }
 
 /// Represents an abstract service within the service mesh.
-pub trait RegisteredService<E: Err>: 'static + Sync + Any {
+pub trait RegisteredService<E: Err>: 'static + Sync + Send {
 
     fn get_priority(&self) -> usize;
 
@@ -49,7 +48,7 @@ pub trait RegisteredService<E: Err>: 'static + Sync + Any {
     fn get_roles(&self) -> &[ServiceKind];
 
     /// Initialize a reload.
-    fn reload(&self, config: Box<dyn Reflect + 'static>) -> Result<BoxedFuture<Result<(),E>>,E>;
+    fn reload<'a>(&'a mut self, config: BoxedConfig) -> Result<Pin<Box<dyn Future<Output=Result<(),E>> + 'a + Send>>,E>;
 
     /// Return a handle to an http client
     fn get_http_client(&self) -> Result<ServiceObj<HttpReqwestRequest,HttpReqwestResponse,E,E>,E>

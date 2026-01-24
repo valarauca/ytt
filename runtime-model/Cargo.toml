@@ -16,3 +16,4 @@ reqwest = { version = "0.13.1", features = ["rustls"] }
 serde = { version = "1.0.228", features = ["derive"] }
 tower-service = "0.3.3"
 uuid = { version = "1.19.0", features = ["v6", "v5"] }
+tokio = { version = "1.49.0", features = ["full"] }
