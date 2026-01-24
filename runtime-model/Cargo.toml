@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 mirror-mirror = { path = "../deps/mirror-mirror/crates/mirror-mirror" }
+tree = { path = "../in-tree/tree" }
 bytes = "1.11.0"
 http = "1.4.0"
 http-body = "1.0.1"

@@ -35,12 +35,15 @@ pub type ServiceObj<Req,Res,E,EE> = Box<dyn Service<Req,Response=Res,Error=E,Fut
 #[derive(Clone,Copy,PartialEq,PartialOrd,Eq,Ord,Debug)]
 #[repr(u8)]
 pub enum ServiceKind {
+    Meta = 0,
     HttpClient = 1,
     HttpServer = 2,
 }
 
 /// Represents an abstract service within the service mesh.
 pub trait RegisteredService<E: Err>: 'static + Sync + Any {
+
+    fn get_priority(&self) -> usize;
 
     /// Returns the roll this service futfills
     fn get_roles(&self) -> &[ServiceKind];
