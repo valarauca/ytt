@@ -1,10 +1,9 @@
 use serde::{Deserialize,Serialize};
-use mirror_mirror::{Reflect};
 use reqwest::{ClientBuilder};
 
-use crate::generic_config::client::traits::{Apply};
+use super::super::traits::Apply;
 
-#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Reflect)]
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub struct Http1 {
     #[serde(default,skip_serializing_if="Option::is_none")]
     pub allow_obsolete_multiline_headers_in_response: Option<bool>,

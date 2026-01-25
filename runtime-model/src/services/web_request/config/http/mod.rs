@@ -1,8 +1,7 @@
 use serde::{Deserialize,Serialize};
-use mirror_mirror::{Reflect};
 use reqwest::{ClientBuilder};
 
-use crate::generic_config::client::traits::{Apply};
+use super::traits::Apply;
 
 pub mod misc;
 use self::misc::MiscPolicy;
@@ -11,7 +10,7 @@ use self::http1::Http1;
 pub mod http2;
 use self::http2::Http2;
 
-#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Reflect)]
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub enum OnlyVersion {
     #[serde(rename = "http_v1")]
     V1,
@@ -19,7 +18,7 @@ pub enum OnlyVersion {
     V2
 }
 
-#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Default,Reflect)]
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Default)]
 pub struct Http {
     #[serde(default,skip_serializing_if="Option::is_none")]
     pub only: Option<OnlyVersion>,

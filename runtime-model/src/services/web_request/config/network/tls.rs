@@ -1,12 +1,11 @@
 use serde::{Deserialize,Serialize};
 use serde::de::{self};
-use mirror_mirror::{Reflect};
 use reqwest::{ClientBuilder};
 use reqwest::tls::Version;
 
-use crate::generic_config::client::traits::{Apply};
+use super::super::traits::Apply;
 
-#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Reflect)]
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub struct Tls {
     #[serde(default,skip_serializing_if="Option::is_none")]
     pub https_only: Option<bool>,
@@ -59,7 +58,7 @@ impl Apply for Tls {
 }
 
 
-#[derive(Clone,PartialEq,Eq,Debug,Reflect)]
+#[derive(Clone,PartialEq,Eq,Debug)]
 pub struct VersionWrapper {
     pub data: Version,
 }

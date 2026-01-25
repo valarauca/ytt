@@ -1,5 +1,4 @@
 use serde::{Deserialize,Serialize};
-use mirror_mirror::{Reflect};
 use reqwest::{ClientBuilder,Client,Error};
 
 pub mod network;
@@ -9,7 +8,7 @@ use self::http::{Http};
 pub mod traits;
 use self::traits::{Apply};
 
-#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Reflect)]
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub struct ClientConfig {
     #[serde(default,skip_serializing_if="Option::is_none")]
     pub network: Option<Networking>,
@@ -17,18 +16,10 @@ pub struct ClientConfig {
     pub protocol: Option<Http>,
 }
 impl ClientConfig {
-    pub fn build(this: &Option<Self>, default: &Option<Client>) -> Result<Client,Error> {
+    pub fn build(&self) -> Result<Client,Error> {
         let b = ClientBuilder::new();
         let b = b.user_agent(concat!("yttrium", "/", "0.1"));
-        match (this,default) {
-            (&Option::None,&Option::Some(ref client)) => return Ok(client.clone()),
-            (&Option::Some(ref this),_) => {
-                this.apply_opts(b).build()
-            },
-            (&Option::None,&Option::None) => {
-                b.build()
-            },
-        }
+        self.apply_opts(b).build()
     }
 }
 impl Apply for ClientConfig {

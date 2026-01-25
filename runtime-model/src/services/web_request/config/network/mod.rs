@@ -1,7 +1,7 @@
 use serde::{Deserialize,Serialize};
 use reqwest::{ClientBuilder};
 
-use crate::generic_config::client::traits::{Apply};
+use super::traits::Apply;
 
 mod bind;
 pub use self::bind::Bind;
@@ -16,7 +16,7 @@ mod connection;
 pub use self::connection::{Connection};
 */
 
-#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Reflect)]
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub struct Networking {
     #[serde(default,skip_serializing_if="Option::is_none")]
     pub socket: Option<Bind>,

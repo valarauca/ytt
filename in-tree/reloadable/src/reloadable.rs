@@ -3,6 +3,7 @@ use std::{
     task::{Poll,Context,Waker},
     marker::PhantomData,
     error::Error,
+    fmt::{Display,Debug},
 };
 
 use futures_util::{
@@ -54,28 +55,48 @@ impl<S> InternalState<S> {
 
 pub type SendTryStream<S,E> = Pin<Box<dyn TryStream<Ok=S,Error=E,Item=Result<S,E>> + Send + 'static>>;
 
-
-/// Generalized Error Type
-pub trait Err: Error {
-    fn stopped() -> Self
-    where
-        Self: Sized;
+pub enum ReloadableServiceError<E> {
+    Stopped,
+    Err(E),
 }
+impl<E> ReloadableServiceError<E> {
+    fn service_stopped() -> Self { Self::Stopped }
+    pub fn is_stopped(&self) -> bool { matches!(self, Self::Stopped) }
+    pub fn into_inner(self) -> Option<E> { match self { Self::Err(e) => Some(e), _ => None } }
+}
+impl<E> From<E> for ReloadableServiceError<E> {
+    fn from(err: E) -> Self { Self::Err(err) }
+}
+impl<E: Debug> std::fmt::Debug for ReloadableServiceError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Stopped => write!(f, "service has stopped"),
+            Self::Err(e) => write!(f, "service returned an error: '{:?}'", e),
+        }
+    }
+}
+impl<E: Display> std::fmt::Display for ReloadableServiceError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Stopped => write!(f, "service has stopped"),
+            Self::Err(e) => write!(f, "service returned an error: '{}'", e),
+        }
+    }
+}
+impl<E: Error> Error for ReloadableServiceError<E> { }
 
-pub struct ReloadableService<E,R,S> 
+/// A service that maybe reloaded remotely
+pub struct ReloadableService<S,R> 
 where
     S: Send + 'static,
-    E: Send + 'static,
 {
     pub(crate) status: InternalState<S>,
     _marker_request: PhantomData<fn(R)>,
-    _marker_error: PhantomData<fn(E)>,
     reload: SendTryStream<S,()>,
 }
-impl<E,R,S> ReloadableService<E,R,S>
+impl<S,R> ReloadableService<S,R>
 where
     S: Service<R> + Clone + Send + Sync + 'static,
-    E: Send + 'static,
 {
 
     /// Create a non-initialized service
@@ -84,21 +105,20 @@ where
             status: InternalState::Uninitialized,
             reload: Box::pin(channel),
             _marker_request: PhantomData,
-            _marker_error: PhantomData,
         }
     }
 }
 
-impl<E,R,S> Service<R> for ReloadableService<E,R,S>
+impl<S,R> Service<R> for ReloadableService<S,R>
 where
     S: Service<R> + Send + 'static,
-    E: Sized + Clone + From<<S as Service<R>>::Error> + Err + Send + 'static,
     <S as Service<R>>::Response: Send + 'static,
     <S as Service<R>>::Future: Send + 'static,
+    <S as Service<R>>::Error: Send + 'static,
 {
     type Response = <S as Service<R>>::Response;
-    type Error = E;
-    type Future = MapErr<<S as Service<R>>::Future,fn(<S as Service<R>>::Error) -> E>;
+    type Error = ReloadableServiceError<<S as Service<R>>::Error>;
+    type Future = MapErr<<S as Service<R>>::Future,fn(<S as Service<R>>::Error) -> Self::Error>;
 
     fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
         loop {
@@ -124,7 +144,7 @@ where
                     }
                     Poll::Ready(None) => {
                         self.status = InternalState::Finished;
-                        return Poll::Ready(Err(E::stopped()));
+                        return Poll::Ready(Err(Self::Error::service_stopped()));
                     }
                     Poll::Ready(Some(Err(()))) => {
                         self.status = InternalState::Uninitialized;
@@ -150,7 +170,7 @@ where
             }
 
             if self.status.is_finished() {
-                return Poll::Ready(Err(E::stopped()));
+                return Poll::Ready(Err(Self::Error::service_stopped()));
             }
 
             if self.status.is_uninitialized() {
@@ -164,7 +184,7 @@ where
                     },
                     Poll::Ready(None) => {
                         self.status = InternalState::Finished;
-                        return Poll::Ready(Err(E::stopped()));
+                        return Poll::Ready(Err(Self::Error::service_stopped()));
                     },
                     Poll::Ready(Some(Err(()))) => {
                         self.status = InternalState::Uninitialized;
@@ -179,7 +199,7 @@ where
     }
     fn call(&mut self, req: R) -> Self::Future {
         assert!(self.status.is_normal(), "always call `is_ready` before calling a service");
-        let f: fn(<S as Service<R>>::Error) -> E = <E as From<<S as Service<R>>::Error>>::from;
+        let f: fn(<S as Service<R>>::Error) -> ReloadableServiceError<<S as Service<R>>::Error> = <Self::Error as From<<S as Service<R>>::Error>>::from;
         self.status.as_normal().unwrap().call(req).map_err(f)
     }
 }

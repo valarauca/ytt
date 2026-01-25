@@ -1,12 +1,11 @@
 
 use std::net::IpAddr;
 
-use mirror_mirror::{Reflect};
 use serde::{Deserialize,Serialize};
 use reqwest::{ClientBuilder};
-use crate::generic_config::client::traits::{Apply};
+use super::super::traits::Apply;
 
-#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Reflect)]
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub struct Bind {
     #[serde(default,skip_serializing_if="Option::is_none")]
     pub address: Option<IpAddr>,

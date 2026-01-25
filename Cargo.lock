@@ -1061,8 +1061,6 @@ name = "reloadable"
 version = "0.1.0"
 dependencies = [
  "futures-util",
- "mirror-mirror",
- "mirror-mirror-opinions",
  "tokio",
  "tower",
 ]
@@ -1124,15 +1122,17 @@ name = "runtime-model"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "futures-util",
  "http",
  "http-body",
  "http-body-util",
  "hyper",
- "mirror-mirror",
  "regex",
+ "reloadable",
  "reqwest",
  "serde",
  "tokio",
+ "tower",
  "tower-service",
  "tree",
  "uuid",

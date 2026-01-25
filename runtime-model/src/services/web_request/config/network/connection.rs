@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use mirror_mirror::{Reflect};
 use serde::{Deserialize,Serialize};
 use reqwest::{ClientBuilder};
 use tower::builder::ServiceBuilder;
@@ -9,7 +8,7 @@ use crate::config::utils::duration::NiceDuration;
 
 
 
-#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Reflect)]
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub struct Connection {
     #[serde(default,skip_serializing_if="Option::is_none")]
     pub overall_connection_deadline: Option<NiceDuration>,

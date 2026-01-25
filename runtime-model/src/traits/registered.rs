@@ -2,13 +2,13 @@ use std::{
     pin::Pin,
     future::Future,
     convert::Infallible,
+    any::Any,
 };
 
 use tower_service::{Service};
 use bytes::{
     Bytes,
 };
-use mirror_mirror::Reflect;
 use http::{
     request::{Request as HttpRequest},
     response::{Response as HttpResponse},
@@ -22,7 +22,7 @@ use reqwest::{
 use super::errors::{Err};
 
 /// Generalized configuration
-pub type BoxedConfig = Box<dyn Reflect +'static + Send + Send>;
+pub type BoxedConfig = Box<dyn Any +'static + Send + Send>;
 
 /// Generalized future
 pub type BoxedFuture<O> = Box<dyn Future<Output=O> + 'static + Send>;
@@ -42,13 +42,16 @@ pub enum ServiceKind {
 /// Represents an abstract service within the service mesh.
 pub trait RegisteredService<E: Err>: 'static + Sync + Send {
 
-    fn get_priority(&self) -> usize;
+    /// Priority is inverted highest values last
+    fn get_priority(&self) -> usize { usize::MAX }
 
     /// Returns the roll this service futfills
-    fn get_roles(&self) -> &[ServiceKind];
+    fn get_roles(&self) -> &'static [ServiceKind];
 
     /// Initialize a reload.
-    fn reload<'a>(&'a mut self, config: BoxedConfig) -> Result<Pin<Box<dyn Future<Output=Result<(),E>> + 'a + Send>>,E>;
+    fn reload<'a>(&'a mut self, config: BoxedConfig) -> Result<Pin<Box<dyn Future<Output=Result<(),E>> + 'a + Send>>,E>
+    where
+        E: Sized;
 
     /// Return a handle to an http client
     fn get_http_client(&self) -> Result<ServiceObj<HttpReqwestRequest,HttpReqwestResponse,E,E>,E>

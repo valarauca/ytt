@@ -11,7 +11,7 @@ use futures_util::future::{FutureExt,Either};
 
 use crate::{
     channel::Channel,
-    reloadable::ReloadableService,
+    reloadable::{ReloadableService},
 };
 
 pub struct ReloadingInstance<C, S, F>
@@ -49,10 +49,13 @@ where
     }
     
     /// Create a ReloadableService instance
-    pub fn service<E, R>(&self) -> ReloadableService<E, R, S>
+    pub fn service<R>(&self) -> ReloadableService<S,R>
     where
+        R: Send + 'static,
         S: Service<R> + 'static,
-        E: Send + 'static,
+        <S as Service<R>>::Response: Send + 'static,
+        <S as Service<R>>::Future: Send + 'static,
+        <S as Service<R>>::Error: Send + 'static,
     {
         ReloadableService::new(self.channel())
     }

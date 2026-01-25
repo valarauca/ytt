@@ -1,12 +1,11 @@
 
 use serde::{Deserialize,Serialize};
-use mirror_mirror::{Reflect};
 use reqwest::{ClientBuilder};
 
-use crate::generic_config::client::traits::{Apply};
+use super::super::traits::Apply;
 use crate::primatives::duration::NiceDuration;
 
-#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Mirror)]
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub struct Pool {
     #[serde(default,skip_serializing_if="Option::is_none")]
     pub idle_timeout: Option<NiceDuration>,

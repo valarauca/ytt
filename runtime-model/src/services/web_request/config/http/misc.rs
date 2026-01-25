@@ -1,12 +1,11 @@
 use serde::{Deserialize,Serialize};
-use mirror_mirror::{Reflect};
 use reqwest::{ClientBuilder};
 
-use crate::generic_config::client::traits::{Apply};
+use super::super::traits::Apply;
 use crate::primatives::headers::HHeaderValue;
 
 
-#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Reflect)]
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub struct MiscPolicy {
     #[serde(default,skip_serializing_if="Option::is_none")]
     pub send_referer: Option<bool>,

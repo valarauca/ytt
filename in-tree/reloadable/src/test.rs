@@ -1,4 +1,5 @@
 use std::{
+    error::Error,
     task::{Poll, Context},
     sync::{Arc, atomic::{AtomicUsize, Ordering}},
 };
@@ -8,6 +9,8 @@ use futures_util::future::BoxFuture;
 
 use crate::instance::ReloadingInstance;
 use crate::reloadable::ReloadableService;
+
+type BoxedError = Box<dyn Error + Send + Sync + 'static>;
 
 #[derive(Clone)]
 struct MockRequest(String);
@@ -34,7 +37,7 @@ impl SimpleService {
 
 impl Service<MockRequest> for SimpleService {
     type Response = MockResponse;
-    type Error = SimpleServiceError;
+    type Error = BoxedError;
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -46,23 +49,6 @@ impl Service<MockRequest> for SimpleService {
         Box::pin(async move {
             Ok(MockResponse(format!("{}-{}", id, req.0)))
         })
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct SimpleServiceError;
-
-impl std::fmt::Display for SimpleServiceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SimpleServiceError")
-    }
-}
-
-impl std::error::Error for SimpleServiceError {}
-
-impl crate::reloadable::Err for SimpleServiceError {
-    fn stopped() -> Self {
-        SimpleServiceError
     }
 }
 
@@ -110,7 +96,7 @@ async fn test_reloading_instance_creation() {
         .await
         .expect("failed to create instance");
 
-    let mut service: ReloadableService<SimpleServiceError, MockRequest, SimpleService> =
+    let mut service: ReloadableService<SimpleService,MockRequest> =
         instance.service();
 
     service.ready().await.expect("service not ready");
@@ -129,9 +115,9 @@ async fn test_multiple_service_subscribers() {
         .await
         .expect("failed to create instance");
 
-    let mut service1: ReloadableService<SimpleServiceError, MockRequest, SimpleService> =
+    let mut service1: ReloadableService<SimpleService,MockRequest> =
         instance.service();
-    let mut service2: ReloadableService<SimpleServiceError, MockRequest, SimpleService> =
+    let mut service2: ReloadableService<SimpleService,MockRequest> =
         instance.service();
 
     service1.ready().await.expect("service1 not ready");
@@ -157,7 +143,7 @@ async fn test_channel_provides_initial_service() {
         .expect("failed to create instance");
 
     let channel = instance.channel();
-    let mut service: ReloadableService<SimpleServiceError, MockRequest, SimpleService> =
+    let mut service: ReloadableService<SimpleService,MockRequest> =
         ReloadableService::new(channel);
 
     let mut ctx = Context::from_waker(&std::task::Waker::noop());
@@ -181,7 +167,7 @@ async fn test_service_ready_state() {
         .await
         .expect("failed to create instance");
 
-    let mut service: ReloadableService<SimpleServiceError, MockRequest, SimpleService> =
+    let mut service: ReloadableService<SimpleService,MockRequest> =
         instance.service();
 
     let mut ctx = Context::from_waker(&std::task::Waker::noop());
@@ -207,7 +193,7 @@ async fn test_sequential_requests() {
         .await
         .expect("failed to create instance");
 
-    let mut service: ReloadableService<SimpleServiceError, MockRequest, SimpleService> =
+    let mut service: ReloadableService<SimpleService,MockRequest> =
         instance.service();
 
     service.ready().await.expect("service not ready");
@@ -225,7 +211,7 @@ async fn test_service_reload() {
         .await
         .expect("failed to create instance");
 
-    let mut service: ReloadableService<SimpleServiceError, MockRequest, SimpleService> =
+    let mut service: ReloadableService<SimpleService,MockRequest> =
         instance.service();
 
     service.ready().await.expect("service not ready");

@@ -2,7 +2,6 @@ use std::time::Duration;
 use std::sync::OnceLock;
 use serde::{Serialize};
 use serde::de::{self};
-use mirror_mirror::{Reflect};
 use regex::Regex;
 
 /*
@@ -71,7 +70,7 @@ fn get_date_time_regex() -> &'static Regex {
 
 /// NiceDuration is a wrapper around `std::time::Duration` to allow for Durations to be built from
 /// human readable strings.
-#[derive(Copy,Clone,Debug,PartialEq,PartialOrd,Eq,Ord,Hash,Reflect,Default)]
+#[derive(Copy,Clone,Debug,PartialEq,PartialOrd,Eq,Ord,Hash,Default)]
 pub struct NiceDuration {
     data: Duration,
 }
