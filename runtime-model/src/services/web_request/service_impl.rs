@@ -20,7 +20,10 @@ use tower::{
 use reloadable::{ReloadingInstance};
 
 use super::config::{ClientConfig};
-use crate::traits::{Err,RegisteredService,ServiceKind,BoxedConfig,ServiceObj};
+use crate::{
+    traits::{Err,RegisteredService,ServiceKind,BoxedConfig,ServiceObj},
+    adapters::maybe_async::{make_boxed,MaybeFuture},
+};
 
 
 pub struct ReqwestWrapper<E> {
@@ -57,7 +60,7 @@ impl<E: Err> RegisteredService<E> for ReqwestWrapper<E> {
         E: Sized,
     {
         let s = self.get_service()
-            .map_future(|f| f.map_err(|e| E::from(e)).boxed());
+            .map_future(|f| make_boxed(f.map_err(|e| E::from(e))));
         Ok(Box::new(s))
     }
 }

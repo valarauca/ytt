@@ -19,6 +19,7 @@ use reqwest::{
 };
 
 use super::errors::{Err};
+use crate::adapters::maybe_async::MaybeFuture;
 
 /// Generalized configuration
 pub type BoxedConfig = Box<dyn Any +'static + Send + Send>;
@@ -27,7 +28,7 @@ pub type BoxedConfig = Box<dyn Any +'static + Send + Send>;
 pub type BoxedFuture<O> = Box<dyn Future<Output=O> + 'static + Send>;
 
 /// A basic "this is a service" type of thing.
-pub type ServiceObj<Req,Res,E> = Box<dyn Service<Req,Response=Res,Error=E,Future=Pin<Box<dyn Future<Output=Result<Res,E>> + 'static + Send>>>>;
+pub type ServiceObj<Req,Res,E> = Box<dyn Service<Req,Response=Res,Error=E,Future=MaybeFuture<Result<Res,E>>> + Send + 'static>;
 
 
 #[derive(Clone,Copy,PartialEq,PartialOrd,Eq,Ord,Debug)]
