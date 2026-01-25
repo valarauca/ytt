@@ -1,5 +1,5 @@
 use std::{
-    future::{ready,Ready,Future},
+    future::{Ready,Future},
     marker::PhantomData,
     pin::Pin,
 };
@@ -14,10 +14,10 @@ use reqwest::{
     Response as ReqwestResponse,
 };
 use tower::{
-    Service,ServiceExt,ServiceBuilder,
+    Service,ServiceExt,
     util::{ServiceFn},
 };
-use reloadable::{ReloadableService,ReloadingInstance};
+use reloadable::{ReloadingInstance};
 
 use super::config::{ClientConfig};
 use crate::traits::{Err,RegisteredService,ServiceKind,BoxedConfig,ServiceObj};
@@ -52,7 +52,7 @@ impl<E: Err> RegisteredService<E> for ReqwestWrapper<E> {
     }
 
     /// Return a handle to an http client
-    fn get_http_client(&self) -> Result<ServiceObj<ReqwestRequest,ReqwestResponse,E,E>,E>
+    fn get_http_client(&self) -> Result<ServiceObj<ReqwestRequest,ReqwestResponse,E>,E>
     where
         E: Sized,
     {

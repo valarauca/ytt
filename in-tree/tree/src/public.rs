@@ -6,12 +6,19 @@ use scc::Shared;
 use crate::tree::InternalTree;
 use crate::node::RecursiveListing;
 
-#[derive(Clone)]
 pub struct Tree<V>
 where
     V: 'static + Send + Sync,
 {
     inner: Arc<InternalTree<String, V>>,
+}
+impl<V> Clone for Tree<V>
+where
+    V: 'static + Send + Sync,
+{
+    fn clone(&self) -> Self {
+        Self { inner: Arc::clone(&self.inner) }
+    }
 }
 impl<V> Default for Tree<V>
 where

@@ -1,7 +1,6 @@
 use std::{
     pin::Pin,
     future::Future,
-    convert::Infallible,
     any::Any,
 };
 
@@ -28,7 +27,7 @@ pub type BoxedConfig = Box<dyn Any +'static + Send + Send>;
 pub type BoxedFuture<O> = Box<dyn Future<Output=O> + 'static + Send>;
 
 /// A basic "this is a service" type of thing.
-pub type ServiceObj<Req,Res,E,EE> = Box<dyn Service<Req,Response=Res,Error=E,Future=Pin<Box<dyn Future<Output=Result<Res,EE>> + 'static + Send>>>>;
+pub type ServiceObj<Req,Res,E> = Box<dyn Service<Req,Response=Res,Error=E,Future=Pin<Box<dyn Future<Output=Result<Res,E>> + 'static + Send>>>>;
 
 
 #[derive(Clone,Copy,PartialEq,PartialOrd,Eq,Ord,Debug)]
@@ -38,6 +37,7 @@ pub enum ServiceKind {
     HttpClient = 1,
     HttpServer = 2,
 }
+
 
 /// Represents an abstract service within the service mesh.
 pub trait RegisteredService<E: Err>: 'static + Sync + Send {
@@ -54,7 +54,7 @@ pub trait RegisteredService<E: Err>: 'static + Sync + Send {
         E: Sized;
 
     /// Return a handle to an http client
-    fn get_http_client(&self) -> Result<ServiceObj<HttpReqwestRequest,HttpReqwestResponse,E,E>,E>
+    fn get_http_client(&self) -> Result<ServiceObj<HttpReqwestRequest,HttpReqwestResponse,E>,E>
     where
         E: Sized,
     {
@@ -62,7 +62,7 @@ pub trait RegisteredService<E: Err>: 'static + Sync + Send {
     }
 
     /// Return something cable to acting like an HTTP Server
-    fn get_http_server(&self) -> Result<ServiceObj<HttpRequest<Incoming>,HttpResponse<Bytes>,E,Infallible>,E>
+    fn get_http_server(&self) -> Result<ServiceObj<HttpRequest<Incoming>,HttpResponse<Bytes>,E>,E>
     where
         E: Sized,
     {

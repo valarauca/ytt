@@ -1,6 +1,9 @@
 mod tree;
 mod node;
 mod guarded;
-pub mod public;
+mod public;
 
-pub use public::Tree;
+pub use self::{
+    public::Tree,
+    node::RecursiveListing,
+};
