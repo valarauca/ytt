@@ -3,11 +3,14 @@ use std::{
     sync::Arc,
     hash::BuildHasherDefault,
     collections::HashSet,
-    future::Future,
+    future::{Future,ready},
 };
-use tokio::sync::RwLock;
+use tokio::sync::{
+    RwLock,
+    OwnedRwLockWriteGuard,
+};
 use futures_util::{
-    future::{Either},
+    future::{Either,FutureExt},
 };
 use seahash::SeaHasher;
 use tree::{Tree,RecursiveListing};
@@ -16,7 +19,7 @@ use crate::{
     traits::{RegisteredService,Err,BoxedConfig,ServiceObj},
 };
 
-use super::maybe_async::{MaybeFuture,MaybeSyncAccess,MaybeErrAccess};
+use super::maybe_async::{MaybeFuture,MaybeSyncAccess,MaybeErrAccess,make_boxed,MutexGuard};
 
 
 pub type ServiceFetch<Req,Res,E> = fn(&BoxedService<E>) -> Result<ServiceObj<Req,Res,E>,E>;
@@ -40,61 +43,12 @@ impl<E: Err> Default for RegisteredServiceTree<E> {
 }
 impl<E: Err> RegisteredServiceTree<E> {
 
-    /// Trigger a service reload.
-    pub async fn reload(&self, path: &[&str], config: BoxedConfig) -> Result<(),E>
-    where
-        E: Sized,
-    {
-        let service = match self.inner.get(path) {
-            None => return Err(E::no_such_service(path)),
-            Some(x) => {
-                // type infernece is funky here
-                let s: ServiceGuard<E> = (*x).clone();
-                s
-            }
-        };
-        service.write_owned().await.reload(config)?.await
-    }
-
-    pub async fn get_service<Req,Res>(&self, path: &[&str], func: fn(&dyn RegisteredService<E>) -> Result<ServiceObj<Req,Res,E>,E>) -> Result<ServiceObj<Req,Res,E>,E>
-    where
-        Req: 'static + Send,
-        Res: 'static + Send,
-    {
-        let service = match self.inner.get(path) {
-            None => return Err(E::no_such_service(path)),
-            Some(x) => {
-                let s: ServiceGuard<E> = (*x).clone();
-                s
-            }
-        };
-        let r = service.read_owned().await;
-        (func)(r.as_ref())
-    }
-
-    pub async fn get_or_parent_service<Req,Res>(&self, path: &[&str], func: fn(&dyn RegisteredService<E>) -> Result<ServiceObj<Req,Res,E>,E>) -> Result<ServiceObj<Req,Res,E>,E>
-    where
-        Req: 'static + Send,
-        Res: 'static + Send,
-    {
-        let service = match self.inner.get_or_parent(path) {
-            None => return Err(E::no_such_service(path)),
-            Some(x) => {
-                let s: ServiceGuard<E> = (*x).clone();
-                s
-            }
-        };
-        let r = service.read_owned().await;
-        (func)(r.as_ref())
-    }
-
     pub fn get_service_exact<Req,Res>(&self, path: &[&str], func: ServiceFetch<Req,Res,E>) -> MaybeFuture<Result<ServiceObj<Req,Res,E>,E>>
     where
         Req: Send + 'static,
         Res: Send + 'static,
         ServiceFetch<Req,Res,E>: Send + 'static,
     {
-
         self.inner
             .get(path)
             .map(|s| -> ServiceGuard<E> { (*s).clone() })
@@ -102,20 +56,63 @@ impl<E: Err> RegisteredServiceTree<E> {
             .do_read::<_,ServiceObj<Req,Res,E>>(func)
     }
 
-    pub fn contains_service(&self) -> MaybeFuture<bool> {
-        todo!()
+    pub fn get_service<Req,Res>(&self, path: &[&str], func: ServiceFetch<Req,Res,E>) -> MaybeFuture<Result<ServiceObj<Req,Res,E>,E>>
+    where
+        Req: Send + 'static,
+        Res: Send + 'static,
+        ServiceFetch<Req,Res,E>: Send + 'static,
+    {
+        self.inner
+            .get_or_parent(path)
+            .map(|s| -> ServiceGuard<E> { (*s).clone() })
+            .ok_or_else(|| E::no_such_service(path))
+            .do_read::<_,ServiceObj<Req,Res,E>>(func)
     }
 
-    pub async fn remote_service(&self) -> bool {
-        todo!()
+    /// Trigger a service reload.
+    pub fn reload(&self, path: &[&str], config: BoxedConfig) -> MaybeFuture<Result<(),E>>
+    where
+        E: Sized,
+    {
+        let arc = match self.inner
+            .get(path)
+            .map(|s| -> ServiceGuard<E> { (*s).clone() })
+            .ok_or_else(|| E::no_such_service(path))
+        {
+            Err(e) => return ready(Err(e)).left_future(),
+            Ok(x) => x,
+        };
+        match arc.sync_write() {
+            Ok(mut guard) => {
+                make_boxed(async move { guard.reload(config)?.await })
+            }
+            Err(arc) => {
+                make_boxed(async move {
+                    let arc: ServiceGuard<E> = arc;
+                    let mut guard = arc.async_write().await;
+                    guard.reload(config)?.await
+                })
+            }
+        }
+    }
+
+    pub fn insert(&self, path: &[&str], item: BoxedService<E>) -> bool {
+        self.inner.insert(path, Arc::new(RwLock::new(item))).is_some()
+    }
+
+    pub fn remove(&self, path: &[&str]) -> Result<(),E> {
+        self.inner.remove(path).map(|_| ()).ok_or_else(|| E::no_such_service(path))
+    }
+
+    pub fn contains_path(&self,path: &[&str]) -> bool {
+        self.inner.contains_path(path)
     }
 
     pub fn list_children(&self, path: &[&str]) -> Option<HashSet<String, BuildHasherDefault<SeaHasher>>> {
-        todo!()
+        self.inner.list_children(path)
     }
 
-    pub async fn list_children_recursive(&self, path: &[&str]) -> Result<RecursiveListing<String>,E> {
-        todo!()
+    pub fn list_children_recursive(&self, path: &[&str]) -> Option<RecursiveListing<String>> {
+        self.inner.list_children_recursive(path)
     }
-
 }

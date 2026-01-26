@@ -4,9 +4,10 @@ use std::{
     pin::Pin,
     sync::Arc,
     ops::{Deref,DerefMut},
+    task::{Context,Waker,Poll},
 };
 use tokio::sync::{RwLock,Mutex};
-use futures_util::future::{Either,FutureExt};
+use futures_util::future::{Either,FutureExt,TryFuture,TryFutureExt};
 
 pub type MaybeFuture<O> = Either<Ready<O>,Pin<Box<dyn Future<Output=O> + 'static + Send>>>;
 
@@ -19,7 +20,7 @@ where
     p.right_future()
 }
 
-trait MutexGuard<T: Send + Sync + 'static> {
+pub trait MutexGuard<T: Send + Sync + 'static> {
     type ReadGuard: Deref<Target=T> + Send + 'static;
     type WriteGuard: DerefMut<Target=T> + Deref<Target=T> + Send + 'static;
 
@@ -57,7 +58,6 @@ where
     fn read<F,O>(self: Arc<Self>, lambda: F) -> MaybeFuture<O>
     where
         F: FnOnce(&T) -> O + Send + 'static,
-        T: Send + Sync + 'static,
         O: Send + 'static,
     {
         match self.sync_read() {
@@ -81,7 +81,6 @@ where
     fn write<F,O>(self: Arc<Self>, lambda: F) -> MaybeFuture<O>
     where
         F: FnOnce(&mut T) -> O + Send + 'static,
-        T: Send + Sync + 'static,
         O: Send + 'static,
     { 
         match self.sync_write() {
@@ -101,6 +100,29 @@ where
             }
         }
     }
+
+    fn future_write<L,O>(self: Arc<Self>, lambda: L) -> MaybeFuture<O>
+    where
+        L: FnOnce(<Self as MutexGuard<T>>::WriteGuard) -> MaybeFuture<O> + Send + 'static,
+        O: Send + 'static,
+    { 
+        match self.sync_write() {
+            Ok(guard) => {
+                (lambda)(guard)
+            }
+            Err(arc) => {
+                // full type name b/c of rust-lang fun
+                let arg: Pin<Box<dyn Future<Output=O> + 'static + Send>> = {
+                    Box::pin(async move { 
+                        let arc: Arc<Self> = arc;
+                        arc.async_write().then(lambda).await
+                    })
+                };
+                arg.right_future()
+            }
+        }
+    }
+
 }
 impl<T: Send + Sync + 'static, M: MutexGuard<T> + Send + Sync + 'static> MaybeSyncAccess<T> for M { }
 
@@ -112,13 +134,11 @@ where
     fn do_read<F,O>(self, lambda: F) -> MaybeFuture<Result<O,E>>
     where
         F: FnOnce(&T) -> Result<O,E> + Send + 'static,
-        T: Send + Sync + 'static,
         O: Send + 'static;
 
     fn do_write<F,O>(self, lambda: F) -> MaybeFuture<Result<O,E>>
     where
         F: FnOnce(&mut T) -> Result<O,E> + Send + 'static,
-        T: Send + Sync + 'static,
         O: Send + 'static;
 }
 impl<T,M,E> MaybeErrAccess<T,E> for Result<Arc<M>,E>
@@ -138,7 +158,7 @@ where
             Err(e) => return ready(Err(e)).left_future(),
         };
         x.read(lambda)
-    }    
+    }
     fn do_write<F,O>(self, lambda: F) -> MaybeFuture<Result<O,E>>
     where
         F: FnOnce(&mut T) -> Result<O,E> + Send + 'static,
@@ -149,5 +169,50 @@ where
             Err(e) => return ready(Err(e)).left_future(),
         };
         x.write(lambda)
+    }
+}
+
+pub trait MaybeFutureExt<T,E>: Future<Output=Result<T,E>>
+{
+
+    #[allow(refining_impl_trait)]
+    fn map_ok<U,F>(self, f: F) -> impl Future<Output=Result<U,E>>
+    where
+        U: Send + 'static,
+        F: FnOnce(T) -> U + Send + 'static;
+}
+
+impl<T,E> MaybeFutureExt<T,E> for MaybeFuture<Result<T,E>>
+where
+    T: Send + 'static,
+    E: Send + 'static,
+{
+    #[allow(refining_impl_trait)]
+    fn map_ok<U,F>(self, f: F) -> MaybeFuture<Result<U,E>>
+    where
+        U: Send + 'static,
+        F: FnOnce(T) -> U + Send + 'static,
+    {
+        let noop = Waker::noop();
+        let mut ctx = Context::from_waker(&noop);
+        match self {
+            Either::Left(mut ready_fut) => {
+                let pinned = Pin::new(&mut ready_fut);
+                return match pinned.poll(&mut ctx) {
+                    Poll::Pending => panic!("impossible"),
+                    Poll::Ready(Ok(x)) => ready(Ok(f(x))).left_future(),
+                    Poll::Ready(Err(e)) => ready(Err(e)).left_future(),
+                };
+            }
+            Either::Right(mut x) => {
+                return match x.as_mut().poll(&mut ctx) {
+                    Poll::Pending => { 
+                        return make_boxed(async move { x.await.map(f) });
+                    },
+                    Poll::Ready(Ok(x)) => return ready(Ok(f(x))).left_future(),
+                    Poll::Ready(Err(e)) => return ready(Err(e)).left_future(),
+                };
+            }
+        }
     }
 }
