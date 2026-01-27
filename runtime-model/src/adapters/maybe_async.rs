@@ -20,6 +20,13 @@ where
     p.right_future()
 }
 
+pub fn make_ready<O>(arg: O) -> MaybeFuture<O>
+where
+    O: Send + 'static,
+{
+    ready(arg).left_future()
+}
+
 pub trait MutexGuard<T: Send + Sync + 'static> {
     type ReadGuard: Deref<Target=T> + Send + 'static;
     type WriteGuard: DerefMut<Target=T> + Deref<Target=T> + Send + 'static;

@@ -12,11 +12,12 @@ use futures_util::{
         MapErr,TryFutureExt,
     },
 };
-use tower::Service;
+use tower::{MakeService,Service};
+use crate::{
+    channel::Channel,
+};
 
-use super::channel::{Channel};
-
-
+#[derive(Clone)]
 pub(crate) enum InternalState<S> {
     Uninitialized,
     Normal(S),
@@ -86,39 +87,44 @@ impl<E: Display> std::fmt::Display for ReloadableServiceError<E> {
 impl<E: Error> Error for ReloadableServiceError<E> { }
 
 /// A service that maybe reloaded remotely
-pub struct ReloadableService<S,R> 
+pub struct ReloadableService<M,S,R> 
 where
-    S: Send + 'static,
+    M: Clone + Send + Sync + 'static,
 {
-    pub(crate) status: InternalState<S>,
-    _marker_request: PhantomData<fn(R)>,
-    reload: SendTryStream<S,()>,
+    pub(crate) status: InternalState<M>,
+    pub(crate) reload: Channel<M>,
+    pub(crate) _marker_service: PhantomData<fn(S)>,
+    pub(crate) _marker_request: PhantomData<fn(R)>,
 }
-impl<S,R> ReloadableService<S,R>
+impl<M,S,R> Clone for ReloadableService<M,S,R>
 where
-    S: Service<R> + Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
 {
-
-    /// Create a non-initialized service
-    pub fn new(channel: Channel<S>) -> Self {
+    fn clone(&self) -> Self {
         Self {
-            status: InternalState::Uninitialized,
-            reload: Box::pin(channel),
+            status: self.status.clone(),
+            reload: self.reload.clone(),
+            _marker_service: PhantomData,
             _marker_request: PhantomData,
         }
     }
 }
-
-impl<S,R> Service<R> for ReloadableService<S,R>
+impl<M,S,R> Service<()> for ReloadableService<M,S,R>
 where
+    R: Send + 'static,
     S: Service<R> + Send + 'static,
+    M: Service<(),Response=S> + MakeService<(),R,Response=S> + Clone + Send + Sync + 'static,
     <S as Service<R>>::Response: Send + 'static,
     <S as Service<R>>::Future: Send + 'static,
     <S as Service<R>>::Error: Send + 'static,
+    <M as Service<()>>::Response: Send + 'static,
+    <M as Service<()>>::Error: Send + 'static,
+    <M as Service<()>>::Future: Send + 'static,
+
 {
-    type Response = <S as Service<R>>::Response;
-    type Error = ReloadableServiceError<<S as Service<R>>::Error>;
-    type Future = MapErr<<S as Service<R>>::Future,fn(<S as Service<R>>::Error) -> Self::Error>;
+    type Response = <M as Service<()>>::Response;
+    type Error = ReloadableServiceError<<M as Service<()>>::Error>;
+    type Future = MapErr<<M as Service<()>>::Future,fn(<M as Service<()>>::Error) -> Self::Error>;
 
     fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
         loop {
@@ -132,7 +138,8 @@ where
                 // so we're just validating we have the latest
                 // version
                 let mut fake = Context::from_waker(&Waker::noop());
-                match self.reload.as_mut().try_poll_next(&mut fake) {
+                let pin: Pin<&mut Channel<M>> = Pin::new(&mut self.reload);
+                match pin.try_poll_next(&mut fake) {
                     Poll::Pending => {
                         // IMPORTANT:
                         //
@@ -156,7 +163,8 @@ where
                     }
                 };
                 assert!(self.status.is_normal());
-                match self.status.as_normal().unwrap().poll_ready(ctx) {
+                let internal = self.status.as_normal().unwrap();
+                match <M as MakeService<(),R>>::poll_ready(internal, ctx) {
                     Poll::Pending => return Poll::Pending,
                     Poll::Ready(Ok(())) => return Poll::Ready(Ok(())),
                     Poll::Ready(Err(_)) => {
@@ -178,7 +186,8 @@ where
                 //
                 // Thusly if we are pending, we will be correctly
                 // woken up when something occurs.
-                match self.reload.as_mut().try_poll_next(ctx) {
+                let p: Pin<&mut Channel<M>> = Pin::new(&mut self.reload);
+                match p.try_poll_next(ctx) {
                     Poll::Pending => {
                         return Poll::Pending;
                     },
@@ -197,10 +206,10 @@ where
             }
         }
     }
-    fn call(&mut self, req: R) -> Self::Future {
+
+    fn call(&mut self, req: ()) -> Self::Future {
         assert!(self.status.is_normal(), "always call `is_ready` before calling a service");
-        let f: fn(<S as Service<R>>::Error) -> ReloadableServiceError<<S as Service<R>>::Error> = <Self::Error as From<<S as Service<R>>::Error>>::from;
+        let f: fn(<M as Service<()>>::Error) -> ReloadableServiceError<<M as Service<()>>::Error> = <Self::Error as From<<M as Service<()>>::Error>>::from;
         self.status.as_normal().unwrap().call(req).map_err(f)
     }
 }
-

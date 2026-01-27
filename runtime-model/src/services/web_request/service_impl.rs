@@ -1,66 +1,100 @@
 use std::{
-    future::{Ready,Future},
+    sync::Arc,
+    future::{Ready,Future,ready},
     marker::PhantomData,
     pin::Pin,
+    task::{Context,Poll},
 };
-
 use futures_util::{
     future::{FutureExt,TryFutureExt},
 };
-use reqwest::{
-    Client,
-    Error as ReqwestError,
-    Request as ReqwestRequest,
-    Response as ReqwestResponse,
-};
 use tower::{
     Service,ServiceExt,
+    service_fn,
     util::{ServiceFn},
 };
-use reloadable::{ReloadingInstance};
-
-use super::config::{ClientConfig};
+use reloadable::{ReloadingInstance,ReloadableService};
 use crate::{
-    traits::{Err,RegisteredService,ServiceKind,BoxedConfig,ServiceObj},
-    adapters::maybe_async::{make_boxed,MaybeFuture},
+    traits::{Err,BoxedConfig},
+    adapters::maybe_async::{MaybeFuture,make_ready},
 };
+use super::config::{ClientConfig};
 
 
-pub struct ReqwestWrapper<E> {
-    interior: ReloadingInstance<ClientConfig,Client,ServiceFn<fn(ClientConfig) -> Ready<Result<Client,ReqwestError>>>>,
+/// Uncached Webclient (reqwestclient)
+///
+/// Acts as an entry point for reloads
+pub struct UncachedClient<E: Err> {
+    interior: ReloadingInstance<ClientConfig,Factory<E>,ClientCloner<E>>,
+}
+
+type Factory<E> = ServiceFn<fn(ClientConfig) -> Ready<Result<ClientCloner<E>,E>>>;
+
+fn factory_impl<E>(config: ClientConfig) -> Ready<Result<ClientCloner<E>,E>>
+where
+    E: Err + Sized,
+{
+    let result = config.build()
+        .map_err(|e| E::from(e))
+        .map(|client: reqwest::Client| -> ClientCloner<E> {
+            ClientCloner::<E>::from(client)
+        });
+    ready(result)
+}
+impl<E: Err + Sized> UncachedClient<E> {
+    pub fn new(config: ClientConfig) -> Result<Self,E> {
+
+        let ptr: fn(ClientConfig) -> Ready<Result<ClientCloner<E>,E>> = factory_impl::<E>;
+
+        // factory returns `Ready` so unwrapping `now_or_never` is safe
+        let interior = ReloadingInstance::new(config,service_fn(ptr))
+            .now_or_never()
+            .unwrap()?;
+        Ok(Self { interior } )
+    }
+
+    pub fn reload(&mut self, config: BoxedConfig) -> MaybeFuture<Result<(),E>> {
+        let config = match config.downcast::<ClientConfig>() {
+            Err(_) => return make_ready(Err(E::type_error::<ClientConfig>())),
+            Ok(config) => config,
+        };
+        self.interior.reload(*config)
+    }
+
+    pub fn get_service_handle(&self) -> ReloadableService<ClientCloner<E>,reqwest::Client,reqwest::Request> {
+        self.interior.get_service_handle::<reqwest::Request,reqwest::Client>()
+    }
+}
+
+
+pub struct ClientCloner<E> {
+    client: reqwest::Client,
     _marker: PhantomData<fn(E)>,
 }
-impl<E: Err> ReqwestWrapper<E> {
-    fn get_service(&self) -> impl Service<ReqwestRequest,Response=ReqwestResponse,Error=reloadable::ReloadableServiceError<reqwest::Error>,Future: Send + 'static> + 'static {
-        self.interior.service::<ReqwestRequest>()
+impl<E> From<reqwest::Client> for ClientCloner<E> {
+    fn from(client: reqwest::Client) -> ClientCloner<E> {
+        Self {
+            client,
+            _marker: PhantomData,
+        }
     }
 }
-impl<E: Err> RegisteredService<E> for ReqwestWrapper<E> {
-
-    fn get_priority(&self) -> usize { 10 }
-
-    fn get_roles(&self) -> &'static [ServiceKind] { &[ServiceKind::HttpClient] }
-
-    fn reload<'a>(&'a mut self, config: BoxedConfig) -> Result<Pin<Box<dyn Future<Output=Result<(),E>> + 'a + Send>>,E> 
-    where
-        E: Sized,
-    {
-        let x = config.downcast::<ClientConfig>().map_err(|_| E::type_error::<ClientConfig>())?;
-        Ok(Box::pin(async move {
-            self.interior.ready().await?;
-
-            self.interior.call(*x).await?;
-            Ok(())
-        }))
+impl<E> Clone for ClientCloner<E> {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            _marker: PhantomData,
+        }
     }
-
-    /// Return a handle to an http client
-    fn get_http_client(&self) -> Result<ServiceObj<ReqwestRequest,ReqwestResponse,E>,E>
-    where
-        E: Sized,
-    {
-        let s = self.get_service()
-            .map_future(|f| make_boxed(f.map_err(|e| E::from(e))));
-        Ok(Box::new(s))
+}
+impl<E> Service<()> for ClientCloner<E> {
+    type Response = reqwest::Client;
+    type Error = E;
+    type Future = Ready<Result<reqwest::Client,E>>;
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(),E>> {
+        Poll::Ready(Ok(()))
+    }
+    fn call(&mut self, _: ()) -> Self::Future {
+        ready(Ok(self.client.clone()))
     }
 }

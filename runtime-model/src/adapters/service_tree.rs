@@ -3,33 +3,30 @@ use std::{
     sync::Arc,
     hash::BuildHasherDefault,
     collections::HashSet,
-    future::{Future,ready},
+    future::{Future},
 };
 use tokio::sync::{
     RwLock,
     OwnedRwLockWriteGuard,
 };
-use futures_util::{
-    future::{Either,FutureExt},
-};
 use seahash::SeaHasher;
 use tree::{Tree,RecursiveListing};
 
-use crate::{
-    traits::{RegisteredService,Err,BoxedConfig,ServiceObj},
-};
-
-use super::maybe_async::{MaybeFuture,MaybeSyncAccess,MaybeErrAccess,make_boxed,MutexGuard};
+use crate::traits::{Err,BoxedConfig};
+use super::maybe_async::{MaybeFuture,MaybeSyncAccess,MaybeErrAccess,make_boxed,MutexGuard,make_ready};
+use super::{ServiceManagement};
 
 
-pub type ServiceFetch<Req,Res,E> = fn(&BoxedService<E>) -> Result<ServiceObj<Req,Res,E>,E>;
-pub type BoxedService<E> = Box<dyn RegisteredService<E> + 'static + Send + Sync>;
-type ServiceGuard<E> = Arc<RwLock<BoxedService<E>>>;
 
+#[allow(type_alias_bounds)]
+pub type ServiceFetch<O,E: Err> = fn(&ServiceManagement<E>) -> Result<O,E>;
+
+#[allow(type_alias_bounds)]
+type ManagementGuard<E: Err> = Arc<RwLock<ServiceManagement<E>>>;
 
 /// Top level system for service management
 pub struct RegisteredServiceTree<E: Err> {
-    inner: Tree<Arc<RwLock<BoxedService<E>>>>,
+    inner: Tree<Arc<RwLock<ServiceManagement<E>>>>,
 }
 impl<E: Err> Clone for RegisteredServiceTree<E> {
     fn clone(&self) -> Self {
@@ -43,30 +40,28 @@ impl<E: Err> Default for RegisteredServiceTree<E> {
 }
 impl<E: Err> RegisteredServiceTree<E> {
 
-    pub fn get_service_exact<Req,Res>(&self, path: &[&str], func: ServiceFetch<Req,Res,E>) -> MaybeFuture<Result<ServiceObj<Req,Res,E>,E>>
+    pub fn get_service_exact<O>(&self, path: &[&str], func: ServiceFetch<O,E>) -> MaybeFuture<Result<O,E>>
     where
-        Req: Send + 'static,
-        Res: Send + 'static,
-        ServiceFetch<Req,Res,E>: Send + 'static,
+        O: Send + 'static,
+        ServiceFetch<O,E>: Send + 'static,
     {
         self.inner
             .get(path)
-            .map(|s| -> ServiceGuard<E> { (*s).clone() })
+            .map(|s| -> ManagementGuard<E> { (*s).clone() })
             .ok_or_else(|| E::no_such_service(path))
-            .do_read::<_,ServiceObj<Req,Res,E>>(func)
+            .do_read::<_,O>(func)
     }
 
-    pub fn get_service<Req,Res>(&self, path: &[&str], func: ServiceFetch<Req,Res,E>) -> MaybeFuture<Result<ServiceObj<Req,Res,E>,E>>
+    pub fn get_service<O>(&self, path: &[&str], func: ServiceFetch<O,E>) -> MaybeFuture<Result<O,E>>
     where
-        Req: Send + 'static,
-        Res: Send + 'static,
-        ServiceFetch<Req,Res,E>: Send + 'static,
+        O: Send + 'static,
+        ServiceFetch<O,E>: Send + 'static,
     {
         self.inner
             .get_or_parent(path)
-            .map(|s| -> ServiceGuard<E> { (*s).clone() })
+            .map(|s| -> ManagementGuard<E> { (*s).clone() })
             .ok_or_else(|| E::no_such_service(path))
-            .do_read::<_,ServiceObj<Req,Res,E>>(func)
+            .do_read::<_,O>(func)
     }
 
     /// Trigger a service reload.
@@ -76,27 +71,27 @@ impl<E: Err> RegisteredServiceTree<E> {
     {
         let arc = match self.inner
             .get(path)
-            .map(|s| -> ServiceGuard<E> { (*s).clone() })
+            .map(|s| -> ManagementGuard<E> { (*s).clone() })
             .ok_or_else(|| E::no_such_service(path))
         {
-            Err(e) => return ready(Err(e)).left_future(),
+            Err(e) => return make_ready(Err(e)),
             Ok(x) => x,
         };
         match arc.sync_write() {
             Ok(mut guard) => {
-                make_boxed(async move { guard.reload(config)?.await })
+                return guard.reload(config);
             }
             Err(arc) => {
                 make_boxed(async move {
-                    let arc: ServiceGuard<E> = arc;
+                    let arc: ManagementGuard<E> = arc;
                     let mut guard = arc.async_write().await;
-                    guard.reload(config)?.await
+                    guard.reload(config).await
                 })
             }
         }
     }
 
-    pub fn insert(&self, path: &[&str], item: BoxedService<E>) -> bool {
+    pub fn insert(&self, path: &[&str], item: ServiceManagement<E>) -> bool {
         self.inner.insert(path, Arc::new(RwLock::new(item))).is_some()
     }
 

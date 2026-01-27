@@ -17,7 +17,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 tower-service = "0.3.3"
 uuid = { version = "1.19.0", features = ["v6", "v5"] }
 tokio = { version = "1.49.0", features = ["full"] }
-tower = { version = "0.5.3", features = ["util"] }
+tower = { version = "0.5.3", features = ["make", "util"] }
 futures-util = { version = "0.3.31", default-features = false, features = ["alloc"] }
 seahash = "4.1.0"
 openapiv3 = "2.2.0"
