@@ -3,9 +3,10 @@ use std::{
     marker::PhantomData,
     task::{Context,Poll},
 };
-use futures_util::future::{FutureExt};
+use futures_util::future::{FutureExt,TryFutureExt};
 use tower::{
     Service,
+    ServiceExt,
     service_fn,
     util::{ServiceFn},
 };
@@ -14,8 +15,10 @@ use crate::{
     traits::{Err,BoxedConfig},
     adapters::maybe_async::{MaybeFuture,make_ready},
 };
-use super::config::{ClientConfig};
-
+use super::{
+    config::{ClientConfig},
+    common::{HttpClientObj,BoxedHttpResponse},
+};
 
 /// Uncached Webclient (reqwestclient)
 ///
@@ -57,8 +60,8 @@ impl<E: Err + Sized> UncachedClient<E> {
         self.interior.reload(*config)
     }
 
-    pub fn get_service_handle(&self) -> ReloadableService<ClientCloner<E>,reqwest::Client,reqwest::Request> {
-        self.interior.get_service_handle::<reqwest::Request,reqwest::Client>()
+    pub fn get_service_handle(&self) -> ReloadableService<ClientCloner<E>,HttpClientObj<E>,reqwest::Request> {
+        self.interior.get_service_handle::<reqwest::Request,HttpClientObj<E>>()
     }
 }
 
@@ -83,14 +86,20 @@ impl<E> Clone for ClientCloner<E> {
         }
     }
 }
-impl<E> Service<()> for ClientCloner<E> {
-    type Response = reqwest::Client;
+impl<E: Err + Sized> Service<()> for ClientCloner<E> {
+    type Response = HttpClientObj<E>;
     type Error = E;
-    type Future = Ready<Result<reqwest::Client,E>>;
+    type Future = Ready<Result<Self::Response,Self::Error>>;
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(),E>> {
         Poll::Ready(Ok(()))
     }
     fn call(&mut self, _: ()) -> Self::Future {
-        ready(Ok(self.client.clone()))
+        let client = self.client.clone();
+        let service = client
+            .map_future(|f| -> BoxedHttpResponse<E> {
+                let fut = f.map_err(|e| E::from(e));
+                Box::pin(fut)
+            });
+        ready(Ok(Box::new(service)))
     }
 }

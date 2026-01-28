@@ -4,7 +4,10 @@ use reloadable::{ReloadableService};
 use crate::{
     traits::{Err,BoxedConfig},
     adapters::maybe_async::{MaybeFuture,make_ready},
-    services::web_request::service_impl::{UncachedClient,ClientCloner},
+    services::web_request::{
+        service_impl::{UncachedClient,ClientCloner},
+        common::{HttpClientObj},
+    },
 };
 
 
@@ -26,7 +29,7 @@ impl<E: Err + Sized> ServiceManagement<E> {
     }
 
     /// Get a webclient if this is an instance of one
-    pub fn get_web_client(&self) -> Result<ReloadableService<ClientCloner<E>,reqwest::Client,reqwest::Request>,E> {
+    pub fn get_web_client(&self) -> Result<ReloadableService<ClientCloner<E>,HttpClientObj<E>,reqwest::Request>,E> {
         #[allow(unreachable_patterns)]
         match self {
             Self::WebClient(client) => Ok(client.get_service_handle()),
