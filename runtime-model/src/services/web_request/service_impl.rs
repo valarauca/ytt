@@ -1,15 +1,11 @@
 use std::{
-    sync::Arc,
-    future::{Ready,Future,ready},
+    future::{Ready,ready},
     marker::PhantomData,
-    pin::Pin,
     task::{Context,Poll},
 };
-use futures_util::{
-    future::{FutureExt,TryFutureExt},
-};
+use futures_util::future::{FutureExt};
 use tower::{
-    Service,ServiceExt,
+    Service,
     service_fn,
     util::{ServiceFn},
 };

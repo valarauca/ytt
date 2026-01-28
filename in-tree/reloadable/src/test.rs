@@ -1,56 +1,12 @@
 use std::{
     error::Error,
+    future::{Ready,ready},
     task::{Poll, Context},
-    sync::{Arc, atomic::{AtomicUsize, Ordering}},
 };
-
-use tower::{Service, ServiceExt};
-use futures_util::future::BoxFuture;
-
-use crate::instance::ReloadingInstance;
-use crate::reloadable::ReloadableService;
+use tower::{Service, ServiceExt, service_fn};
+use crate::{ReloadingInstance,ReloadableService};
 
 type BoxedError = Box<dyn Error + Send + Sync + 'static>;
-
-#[derive(Clone)]
-struct MockRequest(String);
-
-#[derive(Clone)]
-struct MockResponse(String);
-
-#[derive(Clone)]
-struct SimpleService {
-    id: Arc<AtomicUsize>,
-}
-
-impl SimpleService {
-    fn new(id: usize) -> Self {
-        Self {
-            id: Arc::new(AtomicUsize::new(id)),
-        }
-    }
-
-    fn get_id(&self) -> usize {
-        self.id.load(Ordering::SeqCst)
-    }
-}
-
-impl Service<MockRequest> for SimpleService {
-    type Response = MockResponse;
-    type Error = BoxedError;
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: MockRequest) -> Self::Future {
-        let id = self.get_id();
-        Box::pin(async move {
-            Ok(MockResponse(format!("{}-{}", id, req.0)))
-        })
-    }
-}
 
 #[derive(Clone, Default, Debug, PartialEq)]
 struct TestConfig {
@@ -58,173 +14,78 @@ struct TestConfig {
 }
 
 #[derive(Clone)]
-struct SimpleFactory;
+struct TestService {
+    inner: usize,
+}
+impl Service<String> for TestService {
+    type Response = String;
+    type Error = BoxedError;
+    type Future = Ready<Result<Self::Response,Self::Error>>;
 
-impl Service<TestConfig> for SimpleFactory {
-    type Response = SimpleService;
-    type Error = SimpleFactoryError;
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
         Poll::Ready(Ok(()))
     }
-
-    fn call(&mut self, config: TestConfig) -> Self::Future {
-        Box::pin(async move {
-            Ok(SimpleService::new(config.value))
-        })
+    fn call(&mut self, req: String) -> Self::Future {
+        ready(Ok(format!("{}{}", req, self.inner)))
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct SimpleFactoryError;
-
-impl std::fmt::Display for SimpleFactoryError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SimpleFactoryError")
+#[derive(Clone)]
+struct ConfiguredFactory {
+    data: TestConfig,
+}
+impl Service<()> for ConfiguredFactory {
+    type Response = TestService;
+    type Error = BoxedError;
+    type Future = Ready<Result<Self::Response,Self::Error>>;
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+    fn call(&mut self, _: ()) -> Self::Future {
+        ready(Ok(TestService { inner: self.data.value }))
     }
 }
 
-impl std::error::Error for SimpleFactoryError {}
-
-#[tokio::test]
-async fn test_reloading_instance_creation() {
-    let config = TestConfig { value: 42 };
-    let factory = SimpleFactory;
-
-    let instance = ReloadingInstance::new(config, factory)
-        .await
-        .expect("failed to create instance");
-
-    let mut service: ReloadableService<SimpleService,MockRequest> =
-        instance.service();
-
-    service.ready().await.expect("service not ready");
-    let req = MockRequest("test".to_string());
-    let result = service.call(req).await.expect("call failed");
-
-    assert_eq!(result.0, "42-test");
+fn build_factory(arg: TestConfig) -> Ready<Result<ConfiguredFactory,BoxedError>> {
+    ready(Ok(ConfiguredFactory { data: arg }))
 }
 
 #[tokio::test]
-async fn test_multiple_service_subscribers() {
-    let config = TestConfig { value: 42 };
-    let factory = SimpleFactory;
-
-    let instance = ReloadingInstance::new(config, factory)
+async fn basic_validation() {
+    let mut instance = ReloadingInstance::new(TestConfig { value: 42 }, service_fn(build_factory))
         .await
-        .expect("failed to create instance");
+        .unwrap();
 
-    let mut service1: ReloadableService<SimpleService,MockRequest> =
-        instance.service();
-    let mut service2: ReloadableService<SimpleService,MockRequest> =
-        instance.service();
+    let mut x: ReloadableService<ConfiguredFactory,TestService,String> = instance.get_service_handle::<String,TestService>();
 
-    service1.ready().await.expect("service1 not ready");
-    service2.ready().await.expect("service2 not ready");
+    x.ready().await.unwrap();
+    let mut service_1 = x.call(()).await.unwrap();
+    service_1.ready().await.unwrap();
+    let data1 = service_1.call("hello world - ".to_string()).await.unwrap();
+    assert_eq!(data1.as_str(),"hello world - 42");
 
-    let req1 = MockRequest("first".to_string());
-    let req2 = MockRequest("second".to_string());
+    x.ready().await.unwrap();
+    let mut service_2 = x.call(()).await.unwrap();
+    service_2.ready().await.unwrap();
+    let data2 = service_2.call("foobar - ".to_string()).await.unwrap();
+    assert_eq!(data2.as_str(),"foobar - 42");
 
-    let result1 = service1.call(req1).await.expect("call 1 failed");
-    let result2 = service2.call(req2).await.expect("call 2 failed");
+    instance.reload(TestConfig { value: 67 }).await.unwrap();
+    
+    // service 1 is now stale
+    service_1.ready().await.unwrap();
+    let data1 = service_1.call("hello world - ".to_string()).await.unwrap();
+    assert_eq!(data1.as_str(),"hello world - 42");
 
-    assert_eq!(result1.0, "42-first");
-    assert_eq!(result2.0, "42-second");
-}
+    // service 2 now stale, using the out dated config
+    service_2.ready().await.unwrap();
+    let data2 = service_2.call("foobar - ".to_string()).await.unwrap();
+    assert_eq!(data2.as_str(),"foobar - 42");
 
-#[tokio::test]
-async fn test_channel_provides_initial_service() {
-    let config = TestConfig { value: 42 };
-    let factory = SimpleFactory;
-
-    let instance = ReloadingInstance::new(config, factory)
-        .await
-        .expect("failed to create instance");
-
-    let channel = instance.channel();
-    let mut service: ReloadableService<SimpleService,MockRequest> =
-        ReloadableService::new(channel);
-
-    let mut ctx = Context::from_waker(&std::task::Waker::noop());
-
-    match service.poll_ready(&mut ctx) {
-        Poll::Ready(Ok(())) => {
-            let req = MockRequest("ready".to_string());
-            let result = service.call(req).await.expect("call failed");
-            assert_eq!(result.0, "42-ready");
-        }
-        other => panic!("expected Ready(Ok(())), got {:?}", other),
-    }
-}
-
-#[tokio::test]
-async fn test_service_ready_state() {
-    let config = TestConfig { value: 42 };
-    let factory = SimpleFactory;
-
-    let instance = ReloadingInstance::new(config, factory)
-        .await
-        .expect("failed to create instance");
-
-    let mut service: ReloadableService<SimpleService,MockRequest> =
-        instance.service();
-
-    let mut ctx = Context::from_waker(&std::task::Waker::noop());
-
-    let poll_result = service.poll_ready(&mut ctx);
-    match poll_result {
-        Poll::Ready(Ok(())) => {}
-        Poll::Pending => {
-            panic!("service should be ready");
-        }
-        Poll::Ready(Err(_)) => {
-            panic!("service should not error on ready");
-        }
-    }
-}
-
-#[tokio::test]
-async fn test_sequential_requests() {
-    let config = TestConfig { value: 42 };
-    let factory = SimpleFactory;
-
-    let instance = ReloadingInstance::new(config, factory)
-        .await
-        .expect("failed to create instance");
-
-    let mut service: ReloadableService<SimpleService,MockRequest> =
-        instance.service();
-
-    service.ready().await.expect("service not ready");
-    for i in 0..5 {
-        let req = MockRequest(format!("request_{}", i));
-        let result = service.call(req).await.expect("call failed");
-        assert_eq!(result.0, format!("42-request_{}", i));
-    }
-}
-
-#[tokio::test]
-async fn test_service_reload() {
-    let initial_config = TestConfig { value: 42 };
-    let mut instance = ReloadingInstance::new(initial_config, SimpleFactory)
-        .await
-        .expect("failed to create instance");
-
-    let mut service: ReloadableService<SimpleService,MockRequest> =
-        instance.service();
-
-    service.ready().await.expect("service not ready");
-    let req = MockRequest("before_reload".to_string());
-    let result = service.call(req).await.expect("call failed");
-    assert_eq!(result.0, "42-before_reload");
-
-    instance.ready().await.expect("instance not ready");
-    let new_config = TestConfig { value: 44 };
-    let _ = instance.call(new_config).await.expect("reload failed");
-
-    service.ready().await.expect("service not ready after reload");
-    let req = MockRequest("after_reload".to_string());
-    let result = service.call(req).await.expect("call failed");
-    assert_eq!(result.0, "44-after_reload");
+    // we can request a new service, getting the up to date config
+    x.ready().await.unwrap();
+    let mut service_3 = x.call(()).await.unwrap();
+    service_3.ready().await.unwrap();
+    let data3 = service_3.call("foobar - ".to_string()).await.unwrap();
+    assert_eq!(data3.as_str(),"foobar - 67");
 }

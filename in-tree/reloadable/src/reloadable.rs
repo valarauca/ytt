@@ -113,7 +113,7 @@ impl<M,S,R> Service<()> for ReloadableService<M,S,R>
 where
     R: Send + 'static,
     S: Service<R> + Send + 'static,
-    M: Service<(),Response=S> + MakeService<(),R,Response=S> + Clone + Send + Sync + 'static,
+    M: Service<(),Response=S> + MakeService<(),R> + Clone + Send + Sync + 'static,
     <S as Service<R>>::Response: Send + 'static,
     <S as Service<R>>::Future: Send + 'static,
     <S as Service<R>>::Error: Send + 'static,

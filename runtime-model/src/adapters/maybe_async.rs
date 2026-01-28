@@ -6,8 +6,8 @@ use std::{
     ops::{Deref,DerefMut},
     task::{Context,Waker,Poll},
 };
-use tokio::sync::{RwLock,Mutex};
-use futures_util::future::{Either,FutureExt,TryFuture,TryFutureExt};
+use tokio::sync::{RwLock};
+use futures_util::future::{Either,FutureExt};
 
 pub type MaybeFuture<O> = Either<Ready<O>,Pin<Box<dyn Future<Output=O> + 'static + Send>>>;
 
@@ -214,10 +214,10 @@ where
             Either::Right(mut x) => {
                 return match x.as_mut().poll(&mut ctx) {
                     Poll::Pending => { 
-                        return make_boxed(async move { x.await.map(f) });
+                        make_boxed(async move { x.await.map(f) })
                     },
-                    Poll::Ready(Ok(x)) => return ready(Ok(f(x))).left_future(),
-                    Poll::Ready(Err(e)) => return ready(Err(e)).left_future(),
+                    Poll::Ready(Ok(x)) => ready(Ok(f(x))).left_future(),
+                    Poll::Ready(Err(e)) => ready(Err(e)).left_future(),
                 };
             }
         }

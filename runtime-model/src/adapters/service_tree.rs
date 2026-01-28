@@ -3,17 +3,15 @@ use std::{
     sync::Arc,
     hash::BuildHasherDefault,
     collections::HashSet,
-    future::{Future},
 };
 use tokio::sync::{
     RwLock,
-    OwnedRwLockWriteGuard,
 };
 use seahash::SeaHasher;
 use tree::{Tree,RecursiveListing};
 
 use crate::traits::{Err,BoxedConfig};
-use super::maybe_async::{MaybeFuture,MaybeSyncAccess,MaybeErrAccess,make_boxed,MutexGuard,make_ready};
+use super::maybe_async::{MaybeFuture,MaybeErrAccess,make_boxed,MutexGuard,make_ready};
 use super::{ServiceManagement};
 
 
