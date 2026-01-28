@@ -33,24 +33,15 @@ impl<S> InternalState<S> {
     }
 
     fn is_uninitialized(&self) -> bool {
-        match self {
-            Self::Uninitialized => true,
-            _ => false,
-        }
+        matches!(self, Self::Uninitialized)
     }
 
     fn is_finished(&self) -> bool {
-        match self {
-            Self::Finished => true,
-            _ => false,
-        }
+        matches!(self, Self::Finished)
     }
 
     fn is_normal(&self) -> bool {
-        match self {
-            Self::Normal(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Normal(_))
     }
 }
 
@@ -137,7 +128,7 @@ where
                 //
                 // so we're just validating we have the latest
                 // version
-                let mut fake = Context::from_waker(&Waker::noop());
+                let mut fake = Context::from_waker(Waker::noop());
                 let pin: Pin<&mut Channel<M>> = Pin::new(&mut self.reload);
                 match pin.try_poll_next(&mut fake) {
                     Poll::Pending => {

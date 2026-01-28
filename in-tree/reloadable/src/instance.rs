@@ -60,7 +60,7 @@ where
         let reload = Channel::from(self.sender.clone());
         ReloadableService {
             status: InternalState::Uninitialized,
-            reload: reload,
+            reload,
             _marker_service: PhantomData,
             _marker_request: PhantomData,
         }
@@ -78,7 +78,7 @@ where
         }
         self.config.clone_from(&config);
         let _ = self.sender.send_replace(Err(()));
-        let mut fake = Context::from_waker(&Waker::noop());
+        let mut fake = Context::from_waker(Waker::noop());
         let result_ready = match self.factory.poll_ready(&mut fake) {
             Poll::Pending => {
                 let tx = self.sender.clone();
@@ -93,21 +93,18 @@ where
             }
             Poll::Ready(res) => res,
         };
-        match result_ready {
-            Err(e) => {
-                return ready(Err(e)).left_future();
-            }
-            Ok(()) => { }
+        if let Err(e) = result_ready {
+            return ready(Err(e)).left_future();
         };
         let mut future = self.factory.call(config);
         match Pin::new(&mut future).poll(&mut fake) {
             Poll::Ready(Err(e)) => {
-                return ready(Err(e)).left_future();
+                ready(Err(e)).left_future()
             }
             Poll::Ready(Ok(x)) => {
                 let _ = self.sender.send_replace(Ok(x));
                 // fully synchronous update lmaooo
-                return ready(Ok(())).left_future();
+                ready(Ok(())).left_future()
             }
             Poll::Pending => {
                 let tx = self.sender.clone();
@@ -116,8 +113,8 @@ where
                     let _ = tx.send_replace(Ok(out));
                     Ok(())
                 });
-                return boxed.right_future();
+                boxed.right_future()
             }
-        };
+        }
     }
 }

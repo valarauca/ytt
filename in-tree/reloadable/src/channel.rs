@@ -9,13 +9,14 @@ use futures_util::{
     stream::{Stream},
 };
 
+type InteriorFuture<S> = Pin<Box<dyn Future<Output=Result<(Result<S,()>,Receiver<Result<S,()>>),()>> + Send + 'static>>;
 
 pub(crate) enum Status<S> {
-    Fine(Pin<Box<dyn Future<Output=Result<(Result<S,()>,Receiver<Result<S,()>>),()>> + Send + 'static>>),
+    Fine(InteriorFuture<S>),
     Terminated,
 }
 impl<S> Status<S> {
-    fn as_fine<'a>(&'a mut self) -> Option<&'a mut Pin<Box<dyn Future<Output=Result<(Result<S,()>,Receiver<Result<S,()>>),()>> + Send + 'static>>> {
+    fn as_fine<'a>(&'a mut self) -> Option<&'a mut InteriorFuture<S>> {
         match self {
             &mut Self::Fine(ref mut s) => Some(s),
             _ => None,
@@ -73,15 +74,10 @@ where
         };
         s.interior = Status::Fine(Box::pin(async move {
             let mut recv: Receiver<Result<S,()>> = recv;
-            match recv.changed().await {
-                Ok(()) => {
-                    let x: Result<S,()> = recv.borrow_and_update().clone();
-                    return Ok((x,recv));
-                }
-                Err(_) => {
-                    return Err(());
-                }
-            };
+            recv.changed().await
+                .map_err(|_| ())?;
+            let x: Result<S,()> = recv.borrow_and_update().clone();
+            Ok((x,recv))
         }));
         Poll::Ready(Some(item))
     }
