@@ -76,14 +76,14 @@ where
 
     pub(crate) fn set_here_value<'g>(&self, g: &'g Guard, value: V) -> Option<Shared<V>> {
         let mut new = Shared::new(value);
-        let mut old = self.here.load(Ordering::Relaxed, &g);
+        let mut old = self.here.load(Ordering::Relaxed, g);
         loop {
             match self.here.compare_exchange_weak(
                 old,
                 (Some(new), Tag::None),
                 Ordering::AcqRel,
                 Ordering::Relaxed,
-                &g,
+                g,
             ) {
                 Ok((old,_)) => {
                     return old;
@@ -104,14 +104,14 @@ where
 
     pub(crate) fn remove_here_value<'g>(&self, g: &'g Guard) -> Option<Shared<V>> {
         let mut new: Option<Shared<V>> = None;
-        let mut old = self.here.load(Ordering::Relaxed, &g);
+        let mut old = self.here.load(Ordering::Relaxed, g);
         loop {
             match self.here.compare_exchange_weak(
                 old,
                 (new, Tag::None),
                 Ordering::AcqRel,
                 Ordering::Relaxed,
-                &g,
+                g,
             ) {
                 Ok((old,_)) => {
                     return old;
@@ -135,7 +135,7 @@ where
     K: 'static + Send + Sync + Hash + Eq + Clone,
     V: 'static + Send + Sync,
 {
-    pub(crate) fn list_keys<'g>(&self) -> HashSet<K,BuildHasherDefault<SeaHasher>> {
+    pub(crate) fn list_keys(&self) -> HashSet<K,BuildHasherDefault<SeaHasher>> {
         let mut set = HashSet::default();
         if self.children.is_empty() {
             // avoid atomic overhead of creating an iteration entry
@@ -159,7 +159,7 @@ where
             let child_listing = child_ptr
                 .as_ref()
                 .map(|p| p.list_keys_recursive(g))
-                .unwrap_or_else(RecursiveListing::default);
+                .unwrap_or_default();
             listing.children.insert(key.clone(), child_listing);
             true
         });

@@ -48,9 +48,9 @@ where
         Q: Eq + Equivalent<K> + Hash + ToOwned<Owned=K> + ?Sized + 'i,
     {
         guarded(move |g| {
-            let ptr = self.insert_keys_to_location(&g, path);
+            let ptr = self.insert_keys_to_location(g, path);
             debug_assert!(!ptr.is_null());
-            ptr.as_ref().unwrap().set_here_value(&g, value)
+            ptr.as_ref().unwrap().set_here_value(g, value)
         })
     }
 
@@ -92,17 +92,14 @@ where
         guarded(move |g| -> Option<Shared<V>> {
             let mut parent = Vec::new();
             if let Some(s) = self.walk_to_location(g,path,Some(&mut parent))
-                .map(|value| value.as_ref())
-                .flatten()
-                .map(|node_ref| node_ref.get_here_value(g))
-                .flatten()
+                .and_then(|value| value.as_ref())
+                .and_then(|node_ref| node_ref.get_here_value(g))
             {
                 return Some(s);
             }
             while let Some(ptr) = parent.pop() {
                 if let Some(s) = ptr.as_ref()
-                    .map(|node_ref| node_ref.get_here_value(g))
-                    .flatten()
+                    .and_then(|node_ref| node_ref.get_here_value(g))
                 {
                     return Some(s);
                 }
@@ -165,10 +162,7 @@ where
     {
         let mut ptr: Option<Ptr<'g, Node<K,V>>> = Some(self.root.load(Ordering::Acquire,guard));
         for curr_key in path.into_iter() {
-            let p: Ptr<'g,Node<K,V>> = match ptr {
-                None => return None,
-                Some(x) => x,
-            };
+            let p: Ptr<'g,Node<K,V>> = ptr?;
             if p.is_null() {
                 return None;
             }
@@ -208,7 +202,7 @@ where
                 if !ok {
                     return (false, None);
                 }
-                let node_ref = match ptr.map(|p| p.as_ref()).flatten() {
+                let node_ref = match ptr.and_then(|p| p.as_ref()) {
                     None => return (false, None),
                     Some(node_ref) => node_ref,
                 };

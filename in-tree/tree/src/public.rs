@@ -39,30 +39,30 @@ where
     }
 
     pub fn insert(&self, path: &[&str], value: V) -> Option<Shared<V>> {
-        self.inner.insert::<_,str>(path.iter().map(|s| *s), value)
+        self.inner.insert::<_,str>(path.iter().copied(), value)
     }
 
     pub fn get(&self, path: &[&str]) -> Option<Shared<V>> {
-        self.inner.get::<_,str>(path.iter().map(|s| *s))
+        self.inner.get::<_,str>(path.iter().copied())
     }
 
     pub fn contains_path(&self, path: &[&str]) -> bool {
-        self.inner.contains_path::<_,str>(path.iter().map(|s| *s))
+        self.inner.contains_path::<_,str>(path.iter().copied())
     }
 
     pub fn get_or_parent(&self, path: &[&str]) -> Option<Shared<V>> {
-        self.inner.get_or_parent::<_,str>(path.iter().map(|s| *s))
+        self.inner.get_or_parent::<_,str>(path.iter().copied())
     }
 
     pub fn remove(&self, path: &[&str]) -> Option<Shared<V>> {
-        self.inner.remove::<_,str>(path.iter().map(|s| *s))
+        self.inner.remove::<_,str>(path.iter().copied())
     }
 
     pub fn list_children(&self, path: &[&str]) -> Option<HashSet<String, BuildHasherDefault<SeaHasher>>> {
-        self.inner.list_children::<_,str>(path.iter().map(|s| *s))
+        self.inner.list_children::<_,str>(path.iter().copied())
     }
 
     pub fn list_children_recursive(&self, path: &[&str]) -> Option<RecursiveListing<String>> {
-        self.inner.list_children_recursive::<_,str>(path.iter().map(|s| *s))
+        self.inner.list_children_recursive::<_,str>(path.iter().copied())
     }
 }
