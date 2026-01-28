@@ -42,11 +42,11 @@ impl Apply for MiscPolicy {
             b = b.user_agent(val.0.clone());
         }
 
-        b = match &self.follow_redirects {
-            &Option::Some(RedirectPolicy::Limit(limit)) => {
+        b = match self.follow_redirects {
+            Option::Some(RedirectPolicy::Limit(limit)) => {
                 b.redirect(reqwest::redirect::Policy::limited(limit))
             }
-            &Option::Some(RedirectPolicy::Never) => {
+            Option::Some(RedirectPolicy::Never) => {
                 b.redirect(reqwest::redirect::Policy::none())
             },
             _ => b,

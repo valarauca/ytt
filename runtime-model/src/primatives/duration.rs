@@ -86,7 +86,7 @@ impl NiceDuration {
 
     /// returns standard duration
     pub fn get_duration(&self) -> Duration {
-        self.data.clone()
+        self.data
     }
 
     fn to_parts(&self) -> (u64,u64,u64,u64,u64,u64) {
@@ -278,7 +278,7 @@ fn parse_duration() {
     }
 }
 
-fn weird<'a>(arr: &'a [u8;16]) -> &'a [u8] {
+fn weird(arr: &[u8;16]) -> &[u8] {
     let mut i = 15usize;
     for idx in (0..=15usize).rev() {
         if arr[idx] == 0 {

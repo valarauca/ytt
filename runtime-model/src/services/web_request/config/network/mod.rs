@@ -37,9 +37,9 @@ impl Apply for Networking {
         let b = Bind::apply(&self.socket, b);
         let b = Tcp::apply(&self.tcp, b);
         let b = Pool::apply(&self.pool, b);
-        let b = Tls::apply(&self.tls, b);
+        
         //let b = Connection::apply(&self.connection, b);
 
-        b
+        Tls::apply(&self.tls, b)
     }
 }

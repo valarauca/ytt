@@ -7,7 +7,7 @@ pub trait Apply: Sized {
     fn apply(arg: &Option<Self>, builder: ClientBuilder) -> ClientBuilder {
         match arg {
             &Option::None => builder,
-            &Option::Some(ref arg) => arg.apply_opts(builder),
+            Option::Some(arg) => arg.apply_opts(builder),
         }
     }
 

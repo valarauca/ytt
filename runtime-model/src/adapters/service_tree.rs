@@ -77,7 +77,7 @@ impl<E: Err> RegisteredServiceTree<E> {
         };
         match arc.sync_write() {
             Ok(mut guard) => {
-                return guard.reload(config);
+                guard.reload(config)
             }
             Err(arc) => {
                 make_boxed(async move {

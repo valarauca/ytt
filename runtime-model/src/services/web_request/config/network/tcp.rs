@@ -23,19 +23,19 @@ impl Apply for Tcp {
         let mut b = b;
         b = match &self.keepalive_duration {
             &Option::None => b,
-            &Option::Some(ref dur) => b.tcp_keepalive(dur.get_duration()),
+            Option::Some(dur) => b.tcp_keepalive(dur.get_duration()),
         };
         b = match &self.keepalive_interval {
             &Option::None => b,
-            &Option::Some(ref dur) => b.tcp_keepalive_interval(dur.get_duration()),
+            Option::Some(dur) => b.tcp_keepalive_interval(dur.get_duration()),
         };
         b = match &self.keepalive_retries {
             &Option::None => b,
-            &Option::Some(ref count) => b.tcp_keepalive_retries(count.clone()),
+            Option::Some(count) => b.tcp_keepalive_retries(*count),
         };
         b = match &self.no_delay {
             &Option::None => b,
-            &Option::Some(ref x) => b.tcp_nodelay(x.clone()),
+            Option::Some(x) => b.tcp_nodelay(*x),
         };
 
         #[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
@@ -49,7 +49,7 @@ impl Apply for Tcp {
 
         b = match &self.user_timeout {
             &Option::None => b,
-            &Option::Some(ref dur) => set_tcp_user_timeout(b, dur),
+            Option::Some(dur) => set_tcp_user_timeout(b, dur),
         };
         b
     }

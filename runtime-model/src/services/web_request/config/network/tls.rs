@@ -25,33 +25,33 @@ pub struct Tls {
 impl Apply for Tls {
     fn apply_opts(&self, b: ClientBuilder) -> ClientBuilder {
         let mut b = b;
-        b = match &self.https_only {
-            &Option::None => b,
-            &Option::Some(flag) => b.https_only(flag),
+        b = match self.https_only {
+            Option::None => b,
+            Option::Some(flag) => b.https_only(flag),
         };
-        b = match &self.sni {
-            &Option::None => b,
-            &Option::Some(flag) => b.tls_sni(flag),
+        b = match self.sni {
+            Option::None => b,
+            Option::Some(flag) => b.tls_sni(flag),
         };
-        b = match &self.send_tls_info {
-            &Option::None => b,
-            &Option::Some(flag) => b.tls_info(flag),
+        b = match self.send_tls_info {
+            Option::None => b,
+            Option::Some(flag) => b.tls_info(flag),
         };
-        b = match &self.accept_dangerious_invalid_hostnames {
-            &Option::None => b,
-            &Option::Some(flag) => b.danger_accept_invalid_hostnames(flag),
+        b = match self.accept_dangerious_invalid_hostnames {
+            Option::None => b,
+            Option::Some(flag) => b.danger_accept_invalid_hostnames(flag),
         };
-        b = match &self.accept_dangerious_invalid_certs {
-            &Option::None => b,
-            &Option::Some(flag) => b.danger_accept_invalid_certs(flag),
+        b = match self.accept_dangerious_invalid_certs {
+            Option::None => b,
+            Option::Some(flag) => b.danger_accept_invalid_certs(flag),
         };
         b = match &self.min_tls {
             &Option::None => b,
-            &Option::Some(ref min) => b.min_tls_version(min.data.clone()),
+            Option::Some(min) => b.min_tls_version(min.data),
         };
         b = match &self.max_tls {
             &Option::None => b,
-            &Option::Some(ref max) => b.max_tls_version(max.data.clone()),
+            Option::Some(max) => b.max_tls_version(max.data),
         };
         b
     }

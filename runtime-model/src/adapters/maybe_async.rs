@@ -16,7 +16,7 @@ where
     O: Send + 'static,
     F: Future<Output=O> + Send + 'static,
 {
-    let p: Pin<Box<dyn Future<Output=O> + 'static + Send>> = Box::pin(async move { arg.await });
+    let p: Pin<Box<dyn Future<Output=O> + 'static + Send>> = Box::pin(arg);
     p.right_future()
 }
 
@@ -201,24 +201,24 @@ where
         F: FnOnce(T) -> U + Send + 'static,
     {
         let noop = Waker::noop();
-        let mut ctx = Context::from_waker(&noop);
+        let mut ctx = Context::from_waker(noop);
         match self {
             Either::Left(mut ready_fut) => {
                 let pinned = Pin::new(&mut ready_fut);
-                return match pinned.poll(&mut ctx) {
+                match pinned.poll(&mut ctx) {
                     Poll::Pending => panic!("impossible"),
                     Poll::Ready(Ok(x)) => ready(Ok(f(x))).left_future(),
                     Poll::Ready(Err(e)) => ready(Err(e)).left_future(),
-                };
+                }
             }
             Either::Right(mut x) => {
-                return match x.as_mut().poll(&mut ctx) {
+                match x.as_mut().poll(&mut ctx) {
                     Poll::Pending => { 
                         make_boxed(async move { x.await.map(f) })
                     },
                     Poll::Ready(Ok(x)) => ready(Ok(f(x))).left_future(),
                     Poll::Ready(Err(e)) => ready(Err(e)).left_future(),
-                };
+                }
             }
         }
     }

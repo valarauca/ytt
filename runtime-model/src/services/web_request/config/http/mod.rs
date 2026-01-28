@@ -39,8 +39,8 @@ impl Apply for Http {
                 Http1::apply(&self.v1, Http2::apply(&self.v2, b))
             }
         };
-        let b = MiscPolicy::apply(&self.misc, b);
+        
 
-        b
+        MiscPolicy::apply(&self.misc, b)
     }
 }

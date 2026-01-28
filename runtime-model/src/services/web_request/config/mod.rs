@@ -25,8 +25,8 @@ impl ClientConfig {
 impl Apply for ClientConfig {
     fn apply_opts(&self, b: ClientBuilder) -> ClientBuilder {
         let b = Networking::apply(&self.network, b);
-        let b = Http::apply(&self.protocol, b);
+        
 
-        b
+        Http::apply(&self.protocol, b)
     }
 }

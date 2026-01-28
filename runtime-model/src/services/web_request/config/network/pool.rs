@@ -17,11 +17,11 @@ impl Apply for Pool {
         let mut b = b;
         b = match &self.idle_timeout {
             &Option::None => b,
-            &Option::Some(ref dur) => b.pool_idle_timeout(dur.get_duration()),
+            Option::Some(dur) => b.pool_idle_timeout(dur.get_duration()),
         };
         b = match &self.max_idle_per_host {
             &Option::None => b,
-            &Option::Some(ref max) => b.pool_max_idle_per_host(max.clone()),
+            Option::Some(max) => b.pool_max_idle_per_host(*max),
         };
         b
     }

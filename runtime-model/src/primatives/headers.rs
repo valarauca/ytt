@@ -55,7 +55,7 @@ impl<'de> de::Deserialize<'de> for HHeaderValue {
 }
 impl ser::Serialize for HHeaderValue {
     fn serialize<S: ser::Serializer>(&self, s: S) -> Result<S::Ok,S::Error> {
-        fn header_string_error<'a, E: ser::Error>(h: &'a HeaderValue) -> Result<&'a str, E> {
+        fn header_string_error<E: ser::Error>(h: &HeaderValue) -> Result<&str, E> {
             h.to_str()
                 .map_err(|e| E::custom(format!("cannot convert header value '{:?}' to string, converstion error '{:?}'", h, e)))
         }
