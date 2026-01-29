@@ -8,18 +8,49 @@ use tower::{
     Service,
     ServiceExt,
     service_fn,
-    util::{ServiceFn},
+    util::{ServiceFn,MapErr},
 };
 use reloadable::{ReloadingInstance,ReloadableService};
 use crate::{
     traits::{Err,BoxedConfig},
     adapters::maybe_async::{MaybeFuture,make_ready},
+    adapters::reconfigurable::{ReconfigurableService},
 };
 use super::{
     config::{ClientConfig},
     common::{HttpClientObj,BoxedHttpResponse},
 };
 
+
+
+pub fn default_loader<E: Err>(
+    buffer: usize,
+    config: ClientConfig,
+) -> ReconfigurableService<ClientConfig,reqwest::Request,reqwest::Response,E> {
+    let func = service_fn(factory_impl::<E>);
+    ReconfigurableService::new(config, buffer, func)
+}
+
+
+
+fn factory_impl<E>(config: ClientConfig) -> Ready<Result<ClientErrorFixed<E>,E>>
+where
+    E: Err + Sized,
+{
+    let mapper: ErrFunc<E> = <E as From<reqwest::Error>>::from;
+
+    let result = config.build()
+        .map_err(|e| E::from(e))
+        .map(|client: reqwest::Client| -> ClientErrorFixed<E> {
+            client.map_err(mapper)
+        });
+    ready(result)
+}
+
+type ErrFunc<E> = fn(reqwest::Error) -> E;
+type ClientErrorFixed<E> = MapErr<reqwest::Client,ErrFunc<E>>;
+
+/*
 /// Uncached Webclient (reqwestclient)
 ///
 /// Acts as an entry point for reloads
@@ -27,19 +58,10 @@ pub struct UncachedClient<E: Err> {
     interior: ReloadingInstance<ClientConfig,Factory<E>,ClientCloner<E>>,
 }
 
+
+type 
 type Factory<E> = ServiceFn<fn(ClientConfig) -> Ready<Result<ClientCloner<E>,E>>>;
 
-fn factory_impl<E>(config: ClientConfig) -> Ready<Result<ClientCloner<E>,E>>
-where
-    E: Err + Sized,
-{
-    let result = config.build()
-        .map_err(|e| E::from(e))
-        .map(|client: reqwest::Client| -> ClientCloner<E> {
-            ClientCloner::<E>::from(client)
-        });
-    ready(result)
-}
 impl<E: Err + Sized> UncachedClient<E> {
     pub fn new(config: ClientConfig) -> Result<Self,E> {
 
@@ -103,3 +125,4 @@ impl<E: Err + Sized> Service<()> for ClientCloner<E> {
         ready(Ok(Box::new(service)))
     }
 }
+*/

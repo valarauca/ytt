@@ -4,10 +4,8 @@ use reloadable::{ReloadableService};
 use crate::{
     traits::{Err,BoxedConfig},
     adapters::maybe_async::{MaybeFuture,make_ready},
-    services::web_request::{
-        service_impl::{UncachedClient,ClientCloner},
-        common::{HttpClientObj},
-    },
+    adapters::reconfigurable::{ReconfigurableService,RequestHandle},
+    services::web_request::config::{ClientConfig},
 };
 
 
@@ -15,24 +13,27 @@ use crate::{
 /// Interior service definations
 #[non_exhaustive]
 pub enum ServiceManagement<E: Err> {
-    WebClient(UncachedClient<E>)
+    WebClient(ReconfigurableService<ClientConfig,reqwest::Request,reqwest::Response,E>),
 }
 impl<E: Err + Sized> ServiceManagement<E> {
 
     /// Central reloading
-    pub fn reload(&mut self, config: BoxedConfig) -> MaybeFuture<Result<(),E>> {
+    pub async fn reload(&self, config: BoxedConfig) -> Result<(),E> {
         #[allow(unreachable_patterns)]
         match self {
-            Self::WebClient(client) => client.reload(config),
-            _ => make_ready(Err(E::type_error::<()>())),
+            Self::WebClient(client) => {
+                let x: Box<ClientConfig> = config.downcast().map_err(|_| E::type_error::<ClientConfig>())?;
+                client.reconfigure(*x).await
+            }
+            _ => Err(E::type_error::<()>()),
         }
     }
 
     /// Get a webclient if this is an instance of one
-    pub fn get_web_client(&self) -> Result<ReloadableService<ClientCloner<E>,HttpClientObj<E>,reqwest::Request>,E> {
+    pub fn get_web_client(&self) -> Result<RequestHandle<ClientConfig,reqwest::Request,reqwest::Response,E>,E> {
         #[allow(unreachable_patterns)]
         match self {
-            Self::WebClient(client) => Ok(client.get_service_handle()),
+            Self::WebClient(client) => Ok(client.make_request_handle()),
             _ => Err(E::not_an_http_client::<Self>()),
         }
     }

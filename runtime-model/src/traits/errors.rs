@@ -3,7 +3,7 @@ use std::{
     any::Any,
 };
 
-pub trait Err: 'static + Send + Sync + Error
+pub trait Err: Clone + 'static + Send + Sync + Error
     + From<reqwest::Error>
     + From<reloadable::ReloadableServiceError<reqwest::Error>>
 {
@@ -32,6 +32,10 @@ pub trait Err: 'static + Send + Sync + Error
 
     /// For when Registered service lookups fail.
     fn no_such_service(path: &[&str]) -> Self
+    where
+        Self: Sized;
+
+    fn service_has_stopped(name: &'static str) -> Self
     where
         Self: Sized;
 }

@@ -21,3 +21,4 @@ tower = { version = "0.5.3", features = ["make", "util"] }
 futures-util = { version = "0.3.31", default-features = false, features = ["alloc"] }
 seahash = "4.1.0"
 openapiv3 = "2.2.0"
+tokio-stream = { version = "0.1.18", features = ["sync"] }
