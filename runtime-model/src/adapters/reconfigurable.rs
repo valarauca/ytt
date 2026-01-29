@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     sync::{Arc},
     pin::{pin,Pin},
     task::{Poll,Context},
@@ -15,8 +16,18 @@ use futures_util::{
     future::TryFutureExt,
     stream::StreamExt,
 };
+use crate::{
+    traits::{Err,BoxedConfig},
+};
 
-use crate::traits::{Err};
+pub trait Reconfig<Req,Res,E: Err>: 'static + Send + Sync
+where
+    Req: Send + 'static,
+    Res: Send + 'static,
+{
+    fn reconfig<'a>(&'a self, _config: BoxedConfig) -> Pin<Box<dyn Future<Output=Result<(),E>> + 'a + Send>>;
+    fn get_service(&self) -> tower::util::BoxCloneService<Req,Res,E>;
+}
 
 
 pub struct ReconfigurableService<C,Req,Res,E: Err> {
@@ -24,6 +35,25 @@ pub struct ReconfigurableService<C,Req,Res,E: Err> {
     name: &'static str,
     handle: tokio::task::JoinHandle<()>,
 }
+impl<C, Req, Res, E> Reconfig<Req,Res,E> for ReconfigurableService<C,Req,Res,E>
+where
+    C: Any + Clone + PartialEq + Sync + Send + 'static,
+    E: Err,
+    Req: Send + 'static,
+    Res: Send + 'static,
+{
+    fn reconfig<'a>(&'a self, config: BoxedConfig) -> Pin<Box<dyn Future<Output=Result<(),E>> + 'a + Send>> {
+        Box::pin(async {
+            let x = config.downcast::<C>().map_err(|_| E::type_error::<C>())?;
+            self.reconfigure(*x).await
+        })
+    }
+
+    fn get_service(&self) -> tower::util::BoxCloneService<Req,Res,E> {
+        self.make_request_handle().boxed_clone()
+    }
+}
+
 impl<C,Req,Res,E: Err + Sized> ReconfigurableService<C,Req,Res,E> {
 
     /// Constrct a new service

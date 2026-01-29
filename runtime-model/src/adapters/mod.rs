@@ -1,5 +1,5 @@
 
-//pub mod service_tree;
+pub mod service_tree;
 
 pub mod maybe_async;
 pub use self::maybe_async::{MaybeFuture,make_boxed,make_ready};

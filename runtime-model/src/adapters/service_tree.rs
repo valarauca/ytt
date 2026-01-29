@@ -4,9 +4,7 @@ use std::{
     hash::BuildHasherDefault,
     collections::HashSet,
 };
-use tokio::sync::{
-    RwLock,
-};
+use tokio::sync::{RwLock};
 use seahash::SeaHasher;
 use tree::{Tree,RecursiveListing};
 
@@ -75,14 +73,16 @@ impl<E: Err> RegisteredServiceTree<E> {
             Err(e) => return make_ready(Err(e)),
             Ok(x) => x,
         };
-        match arc.sync_write() {
-            Ok(mut guard) => {
-                guard.reload(config)
+        match arc.sync_read() {
+            Ok(guard) => {
+                make_boxed(async move {
+                    guard.reload(config).await
+                })
             }
             Err(arc) => {
                 make_boxed(async move {
                     let arc: ManagementGuard<E> = arc;
-                    let mut guard = arc.async_write().await;
+                    let guard = arc.async_write().await;
                     guard.reload(config).await
                 })
             }
