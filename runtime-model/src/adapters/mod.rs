@@ -8,3 +8,5 @@ pub mod service_kind;
 pub use self::service_kind::{ServiceManagement};
 
 pub mod reconfigurable;
+
+pub mod path_helper;

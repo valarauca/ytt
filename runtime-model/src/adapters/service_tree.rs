@@ -1,6 +1,5 @@
-
 use std::{
-    sync::Arc,
+    sync::{Arc,LazyLock},
     hash::BuildHasherDefault,
     collections::HashSet,
 };
@@ -19,6 +18,12 @@ pub type ServiceFetch<O,E: Err> = fn(&ServiceManagement<E>) -> Result<O,E>;
 
 #[allow(type_alias_bounds)]
 type ManagementGuard<E: Err> = Arc<RwLock<ServiceManagement<E>>>;
+
+
+pub fn get_tree<E: Err>() -> RegisteredServiceTree<E> {
+    todo!()
+}
+
 
 /// Top level system for service management
 pub struct RegisteredServiceTree<E: Err> {

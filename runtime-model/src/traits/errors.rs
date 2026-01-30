@@ -4,8 +4,11 @@ use std::{
 };
 
 pub trait Err: Clone + 'static + Send + Sync + Error
+    + From<url::ParseError>
     + From<reqwest::Error>
     + From<reloadable::ReloadableServiceError<reqwest::Error>>
+    + From<openrouter::Error>
+    + From<serde_json::Error>
 {
 
     /// Add additional context to an existing error

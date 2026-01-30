@@ -30,3 +30,14 @@ impl Apply for ClientConfig {
         Http::apply(&self.protocol, b)
     }
 }
+
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
+pub struct ClientLoader {
+    #[serde(default = "default_client_path")]
+    pub(crate) path: String,
+    pub(crate) buffer: usize,
+    pub(crate) config: ClientConfig,
+}
+fn default_client_path() -> String {
+    "client".to_string()
+}
