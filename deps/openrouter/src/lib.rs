@@ -1,12 +1,16 @@
 //! This library includes helpers and structs to communicate with OpenRouter.
 
-extern crate core;
+use std::{
+    future::{Future,ready,Ready},
+    pin::Pin,
+    task::{Poll,Context},
+};
 
-use core::future::Future;
 use reqwest::{Response, StatusCode};
-use serde_json::Value;
+use serde_json::value::{RawValue};
 use thiserror::Error;
-use tower_service::Service;
+use tower_service::{Service};
+use futures_util::{TryFutureExt,FutureExt,future::{MapErr,Either}};
 
 pub mod completions;
 pub mod config;
@@ -33,67 +37,67 @@ pub static DEFAULT_USER_AGENT: &str = concat!(
     env!("CARGO_PKG_VERSION")
 );
 
-pub struct OpenRouter<S, E>
+pub struct OpenRouter<S>
 where
-    E: From<reqwest::Error>,
-    S: Service<reqwest::Request, Response = reqwest::Response, Error = E>,
+    S: Service<reqwest::Request, Response = reqwest::Response, Error = anyhow::Error>,
 {
     config: OpenRouterBaseConfig,
     service: S,
 }
 
-impl<S, E> OpenRouter<S, E>
+impl<S> OpenRouter<S>
 where
-    E: From<reqwest::Error> + From<url::ParseError> + From<serde_json::Error> + From<Error>,
-    S: Service<reqwest::Request, Response = reqwest::Response, Error = E>,
+    S: Service<reqwest::Request, Response = reqwest::Response, Error = anyhow::Error>,
+    <S as Service<reqwest::Request>>::Future: Send + 'static,
 {
     /// Constructs an OpenRouter instance from a config and service.
     pub fn new(config: OpenRouterBaseConfig, service: S) -> Self {
         Self { config, service }
     }
 
-    /*
-    /// Constructs an OpenRouter instance from a service and config.
-    pub fn from_service(service: S, config: OpenRouterBaseConfig) -> Self {
-        Self { config, service }
-    }
-    */
-
-    async fn execute(&mut self, request: reqwest::Request) -> Result<Response, E>
+    fn execute(&mut self, request: reqwest::Request) -> S::Future
     where
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
-        self.service.call(request).await
+        self.service.call(request)
     }
 
-    /// Helper function for creating GET requests that attaches required and optional header values.
-    async fn get(&mut self, path: &str) -> Result<Response, E>
+    async fn get(&mut self, path: &str) -> Result<Response, anyhow::Error>
     where
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
-        let request = self.config.get(path)?;
+        let request = self.config.get(path).map_err(anyhow::Error::from)?;
         self.execute(request).await
     }
 
-    async fn post(&mut self, path: &str, body: Value) -> Result<Response, E>
+    fn post(&mut self, path: &str, body: Box<RawValue>) -> Either<Ready<Result<Response,Error>>,MapErr<S::Future,fn(anyhow::Error) -> Error>>
     where
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
-        let mut request = self.config.post(path)?;
-        *request.body_mut() = Some(body.to_string().into());
+        // SAFETY: 
+        // - https://github.com/serde-rs/json/blob/master/src/raw.rs#L117
+        // - https://github.com/serde-rs/json/blob/master/src/raw.rs#L131
+        let value: Box<str> = unsafe { std::mem::transmute(body) };
+        let mut request = match self.config.post(path) {
+            Ok(x) => x,
+            Err(e) => return ready(Err(Error::from(e))).left_future()
+        };
+        *request.body_mut() = Some(String::from(value).into());
         request.headers_mut().insert(
             reqwest::header::CONTENT_TYPE,
             reqwest::header::HeaderValue::from_static("application/json"),
         );
-        self.execute(request).await
+        let lambda: fn(anyhow::Error) -> Error = Error::from;
+        let fut = self.execute(request);
+        fut.map_err(lambda).right_future()
     }
 
     /// Returns the amount of available models without model data.
     /// ---
     /// See: <https://openrouter.ai/docs/models>
-    pub async fn models_count(&mut self) -> Result<usize, E>
+    pub async fn models_count(&mut self) -> Result<usize, Error>
     where
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
         let response = self.get("api/v1/models/count").await?;
         type_or_err(response, |r: models::count::Response| r.count).await
@@ -103,9 +107,9 @@ where
     /// parameters the model should support.
     /// ---
     /// See: <https://openrouter.ai/docs/models>
-    pub async fn models(&mut self, parameters: &[Parameter]) -> Result<Vec<Model>, E>
+    pub async fn models(&mut self, parameters: &[Parameter]) -> Result<Vec<Model>, Error>
     where
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
         let response = if parameters.is_empty() {
             self.get("api/v1/models").await?
@@ -124,9 +128,9 @@ where
     }
 
     /// This helper method uses [`Self::models`] and filters out the ones that are not free.
-    pub async fn free_models(&mut self) -> Result<Vec<Model>, E>
+    pub async fn free_models(&mut self) -> Result<Vec<Model>, Error>
     where
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
         let all_models = self.models(&[]).await?;
         let free_models = all_models
@@ -140,10 +144,10 @@ where
     /// Using the ID provided in [`Self::models`], this API call will return a list of providers
     /// for the specific model. This allows filtering for certain supported features, context lengths
     /// or cost and can be used to specify or ignore providers for [`Self::completion`] and [`Self::chat_completion`].
-    pub async fn model_endpoints<ID>(&mut self, id: ID) -> Result<Endpoints, E>
+    pub async fn model_endpoints<ID>(&mut self, id: ID) -> Result<Endpoints, Error>
     where
         ID: AsRef<str>,
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
         let path = format!("api/v1/models/{}/endpoints", id.as_ref());
         let response = self.get(&path).await?;
@@ -156,9 +160,9 @@ where
     ///
     /// # Official OpenRouter Documentation
     /// <https://openrouter.ai/docs/crypto-api#detecting-low-balance>
-    pub async fn credits(&mut self) -> Result<Credits, E>
+    pub async fn credits(&mut self) -> Result<Credits, Error>
     where
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
         let response = self.get("api/v1/credits").await?;
         type_or_err(response, |r: credits::Response| r.data).await
@@ -169,9 +173,9 @@ where
     ///
     /// # Official OpenRouter Documentation
     /// <https://openrouter.ai/docs/api-reference/limits>
-    pub async fn key(&mut self) -> Result<Key, E>
+    pub async fn key(&mut self) -> Result<Key, Error>
     where
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
         let response = self.get("api/v1/auth/key").await?;
         type_or_err(response, |r: keys::Response| r.data).await
@@ -181,9 +185,9 @@ where
     ///
     /// # Official OpenRouter Documentation
     /// <https://openrouter.ai/docs/api-reference/get-a-generation>
-    pub async fn generation(&mut self, id: &str) -> Result<Generation, E>
+    pub async fn generation(&mut self, id: &str) -> Result<Generation, Error>
     where
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
         let path = format!("api/v1/generation?id={}", id);
         let response = self.get(&path).await?;
@@ -192,29 +196,100 @@ where
     }
 
     /// This endpoint should be preferred if the [`Request`] contains multiple messages.
-    pub async fn chat_completion(&mut self, request: Request) -> Result<completions::Response, E>
+    pub async fn chat_completion(&mut self, request: Request) -> Result<completions::Response, Error>
     where
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
-        let response = self
-            .post("api/v1/chat/completions", serde_json::to_value(request)?)
-            .await?;
+        let value = serde_json::value::to_raw_value(&request)?;
+        let response = self.post("api/v1/chat/completions", value).await?;
 
         type_or_err(response, |r: completions::Response| r).await
+    }
+
+    pub fn chat_completion_sync(&mut self, request: Request) -> ServiceFuture {
+        let value = match serde_json::value::to_raw_value(&request) {
+            Ok(x) => x,
+            Err(e) => return ready(Err(Error::from(e))).left_future()
+        };
+        self.post("api/v1/chat/completions", value)
+            .and_then(|response| async move { type_or_err(response, |r: completions::Response| r).await })
+            .boxed()
+            .right_future()
     }
 
     /// "Old school" text generation. This one should be preferred if a simple prompt is in the [`Request`].
-    pub async fn completion(&mut self, request: Request) -> Result<completions::Response, E>
+    pub async fn completion(&mut self, request: Request) -> Result<completions::Response, Error>
     where
-        S::Future: Future<Output = Result<Response, E>>,
+        S::Future: Future<Output = Result<Response, anyhow::Error>>,
     {
+        let value = serde_json::value::to_raw_value(&request)?;
         let response = self
-            .post("api/v1/completions", serde_json::to_value(request)?)
+            .post("api/v1/completions", value)
             .await?;
 
         type_or_err(response, |r: completions::Response| r).await
     }
+
+    pub fn completion_sync(&mut self, request: Request) -> ServiceFuture {
+        let value = match serde_json::value::to_raw_value(&request) {
+            Ok(x) => x,
+            Err(e) => return ready(Err(Error::from(e))).left_future()
+        };
+        self.post("api/v1/completions", value)
+            .and_then(|response| async move { type_or_err(response, |r: completions::Response| r).await })
+            .boxed()
+            .right_future()
+    }
 }
+
+pub struct Completion(pub Request);
+pub struct ChatCompletion(pub Request);
+
+pub type ServiceFuture = Either<Ready<Result<completions::Response,Error>>,Pin<Box<dyn Future<Output=Result<completions::Response,Error>> + Send + 'static>>>;
+
+impl<S> tower_service::Service<ChatCompletion> for OpenRouter<S>
+where
+    S: Service<reqwest::Request, Response = reqwest::Response, Error = anyhow::Error>,
+    <S as Service<reqwest::Request>>::Future: Send + 'static,
+{
+    type Response = completions::Response;
+    type Error = Error;
+    type Future = ServiceFuture;
+
+    fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
+        match self.service.poll_ready(ctx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Err(e)) => Poll::Ready(Err(Self::Error::from(e))),
+            Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+        }
+    }
+    fn call(&mut self, req: ChatCompletion) -> ServiceFuture {
+        self.chat_completion_sync(req.0)
+    }
+}
+impl<S> tower_service::Service<Completion> for OpenRouter<S>
+where
+    S: Service<reqwest::Request, Response = reqwest::Response, Error = anyhow::Error>,
+    <S as Service<reqwest::Request>>::Future: Send + 'static,
+{
+    type Response = completions::Response;
+    type Error = Error;
+    type Future = ServiceFuture;
+
+    fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
+        match self.service.poll_ready(ctx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Err(e)) => Poll::Ready(Err(Self::Error::from(e))),
+            Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+        }
+    }
+    fn call(&mut self, req: Completion) -> ServiceFuture {
+        self.completion_sync(req.0)
+    }
+}
+
+
+
 
 /// Helper function that converts a response either into the type we expect if successful,
 /// or our library error with a parsed OpenRouter error.
@@ -278,6 +353,9 @@ pub enum Error {
     /// URL parsing failed
     #[error("url parse error")]
     UrlParse(#[from] url::ParseError),
+    /// Internal service returned an error
+    #[error("internal service error")]
+    Anyhow(#[from] anyhow::Error),
 }
 
 #[cfg(all(test, feature = "integration_tests"))]
@@ -300,7 +378,7 @@ mod tests {
     };
 
     #[expect(clippy::expect_used)]
-    pub(crate) fn test_instance() -> OpenRouter<reqwest::Client, Error> {
+    pub(crate) fn test_instance() -> OpenRouter<reqwest::Client> {
         let _ = dotenv();
         let api_key = var("OPENROUTER_API_KEY")
             .expect("either OPENROUTER_API_KEY should be set or a .env file has to exist with the key in it");
