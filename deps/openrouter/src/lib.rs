@@ -218,7 +218,7 @@ where
 
 /// Helper function that converts a response either into the type we expect if successful,
 /// or our library error with a parsed OpenRouter error.
-async fn type_or_err<T, R, Ex, Err>(response: Response, extractor: Ex) -> Result<T, Err>
+pub async fn type_or_err<T, R, Ex, Err>(response: Response, extractor: Ex) -> Result<T, Err>
 where
     Ex: Fn(R) -> T,
     R: for<'de> serde::Deserialize<'de>,

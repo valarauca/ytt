@@ -5,47 +5,44 @@ use tower::{
     util::MapErr,
 };
 use crate::{
-    traits::Err,
-    adapters::reconfigurable::{ReconfigurableService},
-    adapters::service_tree::{RegisteredServiceTree},
-    adapters::service_kind::{ServiceManagement},
-    adapters::path_helper::{path_split},
+    adapters::reconfigurable::ReconfigurableService,
+    adapters::service_tree::RegisteredServiceTree,
+    adapters::service_kind::ServiceManagement,
+    adapters::path_helper::path_split,
 };
 use super::config::{ClientConfig,ClientLoader};
 
 
-pub fn load_default_client<E: Err>(
-    tree: RegisteredServiceTree<E>,
+pub fn load_default_client(
+    tree: RegisteredServiceTree,
     client_config: ClientLoader,
 ) {
     let path = client_config.path;
-    let service = default_loader::<E>(client_config.buffer, client_config.config);
+    let service = default_loader(client_config.buffer, client_config.config);
     let manager = ServiceManagement::from(service);
     let path_vec = path_split(&path);
     tree.insert(&path_vec, manager);
 }
 
-fn default_loader<E: Err>(
+fn default_loader(
     buffer: usize,
     config: ClientConfig,
-) -> ReconfigurableService<ClientConfig,reqwest::Request,reqwest::Response,E> {
-    let func = service_fn(factory_impl::<E>);
+) -> ReconfigurableService<ClientConfig,reqwest::Request,reqwest::Response> {
+    let func = service_fn(factory_impl);
     ReconfigurableService::new(config, buffer, func)
 }
 
-fn factory_impl<E>(config: ClientConfig) -> Ready<Result<ClientErrorFixed<E>,E>>
-where
-    E: Err,
+fn factory_impl(config: ClientConfig) -> Ready<Result<ClientErrorFixed,anyhow::Error>>
 {
-    let mapper: ErrFunc<E> = <E as From<reqwest::Error>>::from;
+    let mapper: ErrFunc = |e: reqwest::Error| anyhow::Error::from(e);
 
     let result = config.build()
-        .map_err(|e| E::from(e))
-        .map(|client: reqwest::Client| -> ClientErrorFixed<E> {
+        .map_err(|e| anyhow::Error::from(e))
+        .map(|client: reqwest::Client| -> ClientErrorFixed {
             client.map_err(mapper)
         });
     ready(result)
 }
 
-type ErrFunc<E> = fn(reqwest::Error) -> E;
-type ClientErrorFixed<E> = MapErr<reqwest::Client,ErrFunc<E>>;
+type ErrFunc = fn(reqwest::Error) -> anyhow::Error;
+type ClientErrorFixed = MapErr<reqwest::Client,ErrFunc>;

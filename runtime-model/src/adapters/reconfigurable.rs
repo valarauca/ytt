@@ -1,10 +1,11 @@
 use std::{
     any::Any,
-    sync::{Arc},
+    sync::Arc,
     pin::{pin,Pin},
     task::{Poll,Context},
 };
 
+use anyhow::anyhow;
 use tower::{Service,ServiceExt};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio::sync::{
@@ -17,44 +18,43 @@ use futures_util::{
     stream::StreamExt,
 };
 use crate::{
-    traits::{Err,BoxedConfig},
+    traits::{BoxedConfig, type_error, service_has_stopped},
 };
 
-pub trait Reconfig<Req,Res,E: Err>: 'static + Send + Sync
+pub trait Reconfig<Req,Res>: 'static + Send + Sync
 where
     Req: Send + 'static,
     Res: Send + 'static,
 {
-    fn reconfig<'a>(&'a self, _config: BoxedConfig) -> Pin<Box<dyn Future<Output=Result<(),E>> + 'a + Send>>;
-    fn get_service(&self) -> tower::util::BoxCloneService<Req,Res,E>;
+    fn reconfig<'a>(&'a self, _config: BoxedConfig) -> Pin<Box<dyn Future<Output=Result<(),anyhow::Error>> + 'a + Send>>;
+    fn get_service(&self) -> tower::util::BoxCloneService<Req,Res,anyhow::Error>;
 }
 
 
-pub struct ReconfigurableService<C,Req,Res,E: Err> {
-    tx: MPSCSender<ServiceComms<C,Req,Res,E>>,
+pub struct ReconfigurableService<C,Req,Res> {
+    tx: MPSCSender<ServiceComms<C,Req,Res>>,
     name: &'static str,
     handle: tokio::task::JoinHandle<()>,
 }
-impl<C, Req, Res, E> Reconfig<Req,Res,E> for ReconfigurableService<C,Req,Res,E>
+impl<C, Req, Res> Reconfig<Req,Res> for ReconfigurableService<C,Req,Res>
 where
     C: Any + Clone + PartialEq + Sync + Send + 'static,
-    E: Err,
     Req: Send + 'static,
     Res: Send + 'static,
 {
-    fn reconfig<'a>(&'a self, config: BoxedConfig) -> Pin<Box<dyn Future<Output=Result<(),E>> + 'a + Send>> {
+    fn reconfig<'a>(&'a self, config: BoxedConfig) -> Pin<Box<dyn Future<Output=Result<(),anyhow::Error>> + 'a + Send>> {
         Box::pin(async {
-            let x = config.downcast::<C>().map_err(|_| E::type_error::<C>())?;
+            let x = config.downcast::<C>().map_err(|_| type_error::<C>())?;
             self.reconfigure(*x).await
         })
     }
 
-    fn get_service(&self) -> tower::util::BoxCloneService<Req,Res,E> {
+    fn get_service(&self) -> tower::util::BoxCloneService<Req,Res,anyhow::Error> {
         self.make_request_handle().boxed_clone()
     }
 }
 
-impl<C,Req,Res,E: Err + Sized> ReconfigurableService<C,Req,Res,E> {
+impl<C,Req,Res> ReconfigurableService<C,Req,Res> {
 
     /// Constrct a new service
     pub fn new<F,S>(
@@ -65,10 +65,9 @@ impl<C,Req,Res,E: Err + Sized> ReconfigurableService<C,Req,Res,E> {
     where
         Req: Send + 'static,
         Res: Send + 'static,
-        E: Clone + Send + 'static,
         C: Clone + PartialEq + Sync + Send + 'static,
-        F: Service<C,Response=S,Error=E> + Send + 'static,
-        S: Service<Req,Response=Res,Error=E> + Send + 'static,
+        F: Service<C,Response=S,Error=anyhow::Error> + Send + 'static,
+        S: Service<Req,Response=Res,Error=anyhow::Error> + Send + 'static,
         <S as Service<Req>>::Future: Send + 'static,
         <F as Service<C>>::Future: Send,
     {
@@ -99,13 +98,12 @@ impl<C,Req,Res,E: Err + Sized> ReconfigurableService<C,Req,Res,E> {
     /// Request the service reconfigure itself.
     ///
     /// If the service is stopped this requires `None`
-    pub async fn reconfigure(&self, config: C) -> Result<(),E>
+    pub async fn reconfigure(&self, config: C) -> Result<(),anyhow::Error>
     where
-        E: Clone + Send + 'static,
         C: Clone + PartialEq + Sync + Send + 'static,
     {
         if self.handle.is_finished() {
-            return Err(E::service_has_stopped(self.name));
+            return Err(service_has_stopped(self.name));
         }
         let (tx,rx) = os_channel();
         let _ = self.tx.send(ServiceComms::Reconfigure(config)).await;
@@ -113,27 +111,26 @@ impl<C,Req,Res,E: Err + Sized> ReconfigurableService<C,Req,Res,E> {
         match rx.await {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => Err(e),
-            Err(_) => Err(E::service_has_stopped(self.name))
+            Err(_) => Err(service_has_stopped(self.name))
         }
     }
 
     /// Create a handle that will send requests to the underlying service
-    pub fn make_request_handle(&self) -> RequestHandle<C,Req,Res,E>
+    pub fn make_request_handle(&self) -> RequestHandle<C,Req,Res>
     where
         Req: Send + 'static,
         Res: Send + 'static,
-        E: Clone + Send + 'static,
         C: Clone + PartialEq + Sync + Send + 'static,
     {
         RequestHandle { tx: self.tx.clone(), name: self.name }
     }
 }
 
-pub struct RequestHandle<C,Req,Res,E> {
+pub struct RequestHandle<C,Req,Res> {
     name: &'static str,
-    tx: MPSCSender<ServiceComms<C,Req,Res,E>>,
+    tx: MPSCSender<ServiceComms<C,Req,Res>>,
 }
-impl<C,Req,Res,E> Clone for RequestHandle<C,Req,Res,E> {
+impl<C,Req,Res> Clone for RequestHandle<C,Req,Res> {
     fn clone(&self) -> Self {
         Self {
             name: self.name,
@@ -141,34 +138,32 @@ impl<C,Req,Res,E> Clone for RequestHandle<C,Req,Res,E> {
         }
     }
 }
-impl<C,Req,Res,E: Err + Sized> RequestHandle<C,Req,Res,E> {
+impl<C,Req,Res> RequestHandle<C,Req,Res> {
 
     /// returns `Err(None)` if the service is shutdown
-    pub async fn make_request(&self, req: Req) -> Result<Res,E>
+    pub async fn make_request(&self, req: Req) -> Result<Res,anyhow::Error>
     where
         Req: Send + 'static,
         Res: Send + 'static,
-        E: Clone + Send + 'static,
         C: Clone + PartialEq + Sync + Send + 'static,
     {
         let (tx,rx) = os_channel();
         let _ = self.tx.send(ServiceComms::Request(req, tx)).await;
         match rx.await {
-            Err(_) => Err(E::service_has_stopped(self.name)),
+            Err(_) => Err(service_has_stopped(self.name)),
             Ok(Ok(res)) => Ok(res),
             Ok(Err(e)) => Err(e),
         }
     }
 }
-impl<C, Req, Res, E> Service<Req> for RequestHandle<C, Req, Res, E>
+impl<C, Req, Res> Service<Req> for RequestHandle<C, Req, Res>
 where
     Req: Send + 'static,
     Res: Send + 'static,
-    E: Err + Sized + Clone + Send + 'static,
     C: Clone + PartialEq + Sync + Send + 'static,
 {
     type Response = Res;
-    type Error = E;
+    type Error = anyhow::Error;
     type Future = Pin<Box<dyn Future<Output=Result<Self::Response,Self::Error>> + Send + 'static>>;
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
         Poll::Ready(Ok(()))
@@ -179,25 +174,26 @@ where
     }
 }
 
-async fn spawn_service<C,F,S,Req,Res,E>(
+type InternalErr = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+async fn spawn_service<C,F,S,Req,Res>(
     config: C,
     _buffering: usize,
     factory: F,
-    channel: MPSCRecv<ServiceComms<C,Req,Res,E>>
+    channel: MPSCRecv<ServiceComms<C,Req,Res>>
 )
 where
     Req: Send + 'static,
     Res: Send + 'static,
-    E: Clone + Send + 'static,
     C: Clone + PartialEq + Sync + Send + 'static,
-    F: Service<C,Response=S,Error=E> + Send + 'static,
-    S: Service<Req,Response=Res,Error=E> + Send + 'static,
+    F: Service<C,Response=S,Error=anyhow::Error> + Send + 'static,
+    S: Service<Req,Response=Res,Error=anyhow::Error> + Send + 'static,
     <S as Service<Req>>::Future: Send + 'static,
     <F as Service<C>>::Future: Send,
 {
     let mut factory = factory;
     let mut config = config;
-    let mut service: Option<Result<S,E>> = Some(factory.ready().and_then(|future| future.call(config.clone())).await);
+    let mut service: Option<Result<S,InternalErr>> = Some(factory.ready().and_then(|future| future.call(config.clone())).await.map_err(|e| e.into_boxed_dyn_error()));
 
     let graceful_stop_request = Arc::new(RwLock::new(true));
     let stoppage = graceful_stop_request.clone();
@@ -228,7 +224,7 @@ where
                         continue 'work;
                     }
                     config.clone_from(&new_config);
-                    service = Some(factory.ready().and_then(|future| future.call(new_config)).await);
+                    service = Some(factory.ready().and_then(|future| future.call(new_config)).await.map_err(|e|e.into_boxed_dyn_error()));
                     continue 'reload;
                 },
                 ServiceComms::Request(req,resp_chan) => {
@@ -236,7 +232,7 @@ where
                         Ok(srvc) => {
                             srvc.ready().and_then(|rdy| rdy.call(req)).await
                         }
-                        Err(e) => Err(e.clone()),
+                        Err(e) => Err(anyhow!("Service is misconfigured, reason: '{}'", e)),
                     };
                     let _ = resp_chan.send(out);
                     continue 'work;
@@ -244,7 +240,7 @@ where
                 ServiceComms::Ready(resp_chan) => {
                     let out = match result.as_mut() {
                         Ok(srvc) => srvc.ready().await,
-                        Err(e) => Err(e.clone()),
+                        Err(e) => Err(anyhow!("Service is misconfigured, reason: '{}'", e))
                     };
                     let _ = resp_chan.send(out.map(|_| ()));
                 }
@@ -254,7 +250,7 @@ where
     return ();
 }
 
-enum ServiceComms<C,Req,Res,E> {
+enum ServiceComms<C,Req,Res> {
     /// Service is being asked to stop
     StopNow,
     /// Stop processing new incoming connections
@@ -263,14 +259,14 @@ enum ServiceComms<C,Req,Res,E> {
     /// Service is being asked to reconfigure itself
     Reconfigure(C),
     /// New incoming requests
-    Request(Req,OSSend<Result<Res,E>>),
+    Request(Req,OSSend<Result<Res,anyhow::Error>>),
     /// Send Ready check.
     ///
     /// This is not used for traditional `tower::Service` readiness semantics
     /// this is largely used to validated a configuration change worked.
     ///
     /// Normal service calls will call into `poll_ready` prior to processing.
-    Ready(OSSend<Result<(),E>>),
+    Ready(OSSend<Result<(),anyhow::Error>>),
 }
 
 #[cfg(test)]
