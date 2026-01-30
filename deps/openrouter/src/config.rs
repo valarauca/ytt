@@ -5,7 +5,7 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct OpenRouterBaseConfig {
     #[serde(
         deserialize_with = "deserialize_url",

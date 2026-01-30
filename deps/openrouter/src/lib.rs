@@ -17,7 +17,7 @@ pub mod keys;
 pub mod models;
 pub mod providers;
 
-use crate::{
+pub use crate::{
     completions::Request,
     config::OpenRouterBaseConfig,
     credits::Credits,
@@ -52,10 +52,12 @@ where
         Self { config, service }
     }
 
+    /*
     /// Constructs an OpenRouter instance from a service and config.
     pub fn from_service(service: S, config: OpenRouterBaseConfig) -> Self {
         Self { config, service }
     }
+    */
 
     async fn execute(&mut self, request: reqwest::Request) -> Result<Response, E>
     where

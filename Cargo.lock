@@ -549,8 +549,6 @@ checksum = "7714e70437a7dc3ac8eb7e6f8df75fd8eb422675fc7678aff7364301092b1017"
 dependencies = [
  "equivalent",
  "hashbrown",
- "serde",
- "serde_core",
 ]
 
 [[package]]
@@ -684,17 +682,6 @@ name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
-
-[[package]]
-name = "openapiv3"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c8d427828b22ae1fff2833a03d8486c2c881367f1c336349f307f321e7f4d05"
-dependencies = [
- "indexmap",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "openrouter"
@@ -1014,17 +1001,19 @@ dependencies = [
  "http-body",
  "http-body-util",
  "hyper",
- "openapiv3",
+ "openrouter",
  "regex",
  "reloadable",
  "reqwest",
  "seahash",
  "serde",
+ "serde_json",
  "tokio",
  "tokio-stream",
  "tower",
  "tower-service",
  "tree",
+ "url",
  "uuid",
 ]
 
