@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use openrouter::{
     OpenRouter,
-    completions::{Request as ORRequest,Response as ORResponse},
+    Completion,
+    completions::{Response as ORResponse},
 };
 use reqwest::{Request as HttpRequest,Response as HttpResponse};
 
@@ -52,11 +53,9 @@ async fn root_factory_impl(config: OpenRouterConfiguration) -> ReconfigurableSer
 }
 */
 
-/*
 pub struct OpenRouterService {
     interior: OpenRouter<tower::util::BoxCloneService<HttpRequest,HttpResponse,anyhow::Error>,anyhow::Error>,
     routing_options: Option<Box<dyn FnMut(&mut ORRequest) -> Result<(),anyhow::Error> + Send + 'static>>,
-    chat: bool,
 }
 impl tower::Service<ORRequest> for OpenRouterService {
     type Response = ORResponse;
@@ -79,4 +78,3 @@ impl tower::Service<ORRequest> for OpenRouterService {
         }
     }
 }
-*/
