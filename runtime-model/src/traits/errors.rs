@@ -34,3 +34,4 @@ pub fn service_has_stopped(name: &'static str) -> anyhow::Error {
         name
     )
 }
+

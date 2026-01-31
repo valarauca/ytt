@@ -1,11 +1,11 @@
 use std::any::Any;
 use crate::{
-    traits::{BoxedConfig, not_an_http_client},
+    traits::{BoxedConfig, not_an_http_client, not_an_http_server},
     adapters::reconfigurable::{Reconfig,ReconfigurableService},
+    services::listenable::kinds::{ExtHttpRequest,ExtHttpResponse},
 };
 use reqwest::{Request as HttpRequest,Response as HttpResponse};
 use openrouter::completions::{Request as ORRequest,Response as ORResponse};
-
 
 /// Interior service definations
 ///
@@ -15,6 +15,15 @@ use openrouter::completions::{Request as ORRequest,Response as ORResponse};
 pub enum ServiceManagement {
     WebClient(Box<dyn Reconfig<HttpRequest,HttpResponse> + 'static>),
     OpenRouter(Box<dyn Reconfig<ORRequest,ORResponse> + 'static>),
+    EndPoint(Box<dyn Reconfig<ExtHttpRequest,ExtHttpResponse> + 'static>),
+}
+impl<C> From<ReconfigurableService<C,ExtHttpRequest,ExtHttpResponse>> for ServiceManagement
+where
+    C: Any + Clone + PartialEq + Sync + Send + 'static,
+{
+    fn from(item: ReconfigurableService<C,ExtHttpRequest,ExtHttpResponse>) -> Self {
+        Self::EndPoint(Box::new(item))
+    }
 }
 impl<C> From<ReconfigurableService<C,HttpRequest,HttpResponse>> for ServiceManagement
 where
@@ -39,6 +48,7 @@ impl ServiceManagement {
         match self {
             Self::WebClient(client) => client.reconfig(config).await,
             Self::OpenRouter(client) => client.reconfig(config).await,
+            Self::EndPoint(client) => client.reconfig(config).await,
         }
     }
 
@@ -54,6 +64,13 @@ impl ServiceManagement {
         match self {
             Self::OpenRouter(client) => Ok(client.get_service()),
             _ => Err(not_an_http_client::<Self>()),
+        }
+    }
+
+    pub fn get_endpoint(&self) -> Result<tower::util::BoxCloneService<ExtHttpRequest,ExtHttpResponse,anyhow::Error>,anyhow::Error> {
+        match self {
+            Self::EndPoint(client) => Ok(client.get_service()),
+            _ => Err(not_an_http_server::<Self>()),
         }
     }
 }
