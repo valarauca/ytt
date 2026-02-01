@@ -8,7 +8,7 @@ use crate::{
     adapters::reconfigurable::ReconfigurableService,
     adapters::service_tree::RegisteredServiceTree,
     adapters::service_kind::ServiceManagement,
-    adapters::path_helper::path_split,
+    adapters::path_helper::path_relocate,
 };
 use super::config::{ClientConfig,ClientLoader};
 
@@ -20,7 +20,7 @@ pub fn load_default_client(
     let path = client_config.path;
     let service = default_loader(client_config.buffer, client_config.config);
     let manager = ServiceManagement::from(service);
-    let path_vec = path_split(&path);
+    let path_vec = path_relocate(&path);
     tree.insert(&path_vec, manager);
 }
 

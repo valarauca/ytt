@@ -1,8 +1,5 @@
-use anyhow::Error;
-use http_body::{Body};
-use hyper::body::Incoming;
-use bytes::{Bytes};
+use axum::body::Body;
 use http::{Request,Response};
 
-pub type ExtHttpRequest = Request<Incoming>;
-pub type ExtHttpResponse = Response<Box<dyn Body<Data=Bytes,Error=Error> + 'static + Send>>;
+pub type ExtHttpRequest = Request<Body>;
+pub type ExtHttpResponse = Response<Body>;

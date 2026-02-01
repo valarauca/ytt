@@ -8,7 +8,7 @@ use self::http::{Http};
 pub mod traits;
 use self::traits::{Apply};
 
-#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
+#[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug,Default)]
 pub struct ClientConfig {
     #[serde(default,skip_serializing_if="Option::is_none")]
     pub network: Option<Networking>,
@@ -33,11 +33,16 @@ impl Apply for ClientConfig {
 
 #[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub struct ClientLoader {
-    #[serde(default = "default_client_path")]
-    pub(crate) path: String,
+    pub(crate) path: Vec<String>,
     pub(crate) buffer: usize,
     pub(crate) config: ClientConfig,
 }
-fn default_client_path() -> String {
-    "client".to_string()
+impl Default for ClientLoader {
+    fn default() -> ClientLoader {
+        Self {
+            path: vec!["client".to_string()],
+            buffer: 1024,
+            config: ClientConfig::default(),
+        }
+    }
 }

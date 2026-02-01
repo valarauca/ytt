@@ -25,3 +25,4 @@ openrouter = { path = "../deps/openrouter" }
 url = "2.5.8"
 serde_json = "1.0.149"
 anyhow = "1.0.100"
+axum = "0.8.8"

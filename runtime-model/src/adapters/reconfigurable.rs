@@ -19,6 +19,7 @@ use futures_util::{
 };
 use crate::{
     traits::{BoxedConfig, type_error, service_has_stopped},
+    adapters::s3service::{BoxCloneSyncService},
 };
 
 pub trait Reconfig<Req,Res>: 'static + Send + Sync
@@ -27,7 +28,7 @@ where
     Res: Send + 'static,
 {
     fn reconfig<'a>(&'a self, _config: BoxedConfig) -> Pin<Box<dyn Future<Output=Result<(),anyhow::Error>> + 'a + Send>>;
-    fn get_service(&self) -> tower::util::BoxCloneService<Req,Res,anyhow::Error>;
+    fn get_service(&self) -> BoxCloneSyncService<Req,Res,anyhow::Error>;
 }
 
 
@@ -49,8 +50,8 @@ where
         })
     }
 
-    fn get_service(&self) -> tower::util::BoxCloneService<Req,Res,anyhow::Error> {
-        self.make_request_handle().boxed_clone()
+    fn get_service(&self) -> BoxCloneSyncService<Req,Res,anyhow::Error> {
+        BoxCloneSyncService::new(self.make_request_handle())
     }
 }
 
