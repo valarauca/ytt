@@ -10,7 +10,10 @@ use crate::{
     adapters::service_kind::ServiceManagement,
     adapters::path_helper::path_relocate,
 };
-use super::config::{ClientConfig,ClientLoader};
+use super::{
+    config::{ClientConfig,ClientLoader},
+    service_kind::WebClientService,
+};
 
 
 pub fn load_default_client(
@@ -18,8 +21,9 @@ pub fn load_default_client(
     client_config: ClientLoader,
 ) {
     let path = client_config.path;
-    let service = default_loader(client_config.buffer, client_config.config);
-    let manager = ServiceManagement::from(service);
+    let reconfigurable_service = default_loader(client_config.buffer, client_config.config);
+    let web_client = WebClientService::new(reconfigurable_service);
+    let manager = ServiceManagement::from(web_client);
     let path_vec = path_relocate(&path);
     tree.insert(&path_vec, manager);
 }

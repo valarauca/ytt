@@ -4,6 +4,7 @@ use crate::{
     adapters::reconfigurable::{Reconfig,ReconfigurableService},
     adapters::s3service::{BoxCloneSyncService},
     services::listenable::{ kinds::{ExtHttpRequest,ExtHttpResponse}, webshit::{Webshit}},
+    services::web_request::service_kind::WebClientService,
 };
 use reqwest::{Request as HttpRequest,Response as HttpResponse};
 use openrouter::completions::{Request as ORRequest,Response as ORResponse};
@@ -15,7 +16,7 @@ use openrouter::completions::{Request as ORRequest,Response as ORResponse};
 /// type is for an undelrying service
 #[non_exhaustive]
 pub enum ServiceManagement {
-    WebClient(Box<dyn Reconfig<HttpRequest,HttpResponse> + 'static>),
+    WebClient(WebClientService),
     OpenRouter(Box<dyn Reconfig<ORRequest,ORResponse> + 'static>),
     EndPoint(Box<dyn Reconfig<ExtHttpRequest,ExtHttpResponse> + 'static>),
 }
@@ -27,12 +28,9 @@ where
         Self::EndPoint(Box::new(item))
     }
 }
-impl<C> From<ReconfigurableService<C,HttpRequest,HttpResponse>> for ServiceManagement
-where
-    C: Any + Clone + PartialEq + Sync + Send + 'static,
-{
-    fn from(item: ReconfigurableService<C,HttpRequest,HttpResponse>) -> Self {
-        Self::WebClient(Box::new(item))
+impl From<WebClientService> for ServiceManagement {
+    fn from(item: WebClientService) -> Self {
+        Self::WebClient(item)
     }
 }
 impl<C> From<ReconfigurableService<C,ORRequest,ORResponse>> for ServiceManagement
@@ -48,7 +46,7 @@ impl ServiceManagement {
     /// Central reloading
     pub async fn reload(&self, config: BoxedConfig) -> Result<(),anyhow::Error> {
         match self {
-            Self::WebClient(client) => client.reconfig(config).await,
+            Self::WebClient(client) => client.reload(config).await,
             Self::OpenRouter(client) => client.reconfig(config).await,
             Self::EndPoint(client) => client.reconfig(config).await,
         }
@@ -57,7 +55,7 @@ impl ServiceManagement {
     /// Get a webclient if this is an instance of one
     pub fn get_web_client(&self) -> Result<BoxCloneSyncService<HttpRequest,HttpResponse,anyhow::Error>,anyhow::Error> {
         match self {
-            Self::WebClient(client) => Ok(client.get_service()),
+            Self::WebClient(client) => Ok(BoxCloneSyncService::new(client.make_reqwest_service())),
             _ => Err(not_an_http_client::<Self>()),
         }
     }

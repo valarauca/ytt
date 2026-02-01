@@ -285,7 +285,7 @@ mod tests {
 
     impl Service<TestConfig> for TestServiceFactory {
         type Response = TestService;
-        type Error = String;
+        type Error = anyhow::Error;
         type Future = Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
         fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -305,7 +305,7 @@ mod tests {
 
     impl Service<i32> for TestService {
         type Response = i32;
-        type Error = String;
+        type Error = anyhow::Error;
         type Future = Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
         fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -325,7 +325,7 @@ mod tests {
         let handle = service.make_request_handle();
 
         let result = handle.make_request(5).await;
-        assert_eq!(result, Some(Ok(10)));
+        assert_eq!(result.unwrap(), 10);
 
         service.request_immediate_stop().await;
     }
@@ -340,9 +340,9 @@ mod tests {
         let result2 = handle.make_request(4).await;
         let result3 = handle.make_request(10).await;
 
-        assert_eq!(result1, Some(Ok(6)));
-        assert_eq!(result2, Some(Ok(12)));
-        assert_eq!(result3, Some(Ok(30)));
+        assert_eq!(result1.unwrap(), 6);
+        assert_eq!(result2.unwrap(), 12);
+        assert_eq!(result3.unwrap(), 30);
 
         service.request_immediate_stop().await;
     }
@@ -354,14 +354,14 @@ mod tests {
         let handle = service.make_request_handle();
 
         let result1 = handle.make_request(5).await;
-        assert_eq!(result1, Some(Ok(10)));
+        assert_eq!(result1.unwrap(), 10);
 
         let new_config = TestConfig { multiplier: 5 };
         let reconfig_result = service.reconfigure(new_config).await;
-        assert_eq!(reconfig_result, Some(Ok(())));
+        assert!(reconfig_result.is_ok());
 
         let result2 = handle.make_request(5).await;
-        assert_eq!(result2, Some(Ok(25)));
+        assert_eq!(result2.unwrap(), 25);
 
         service.request_immediate_stop().await;
     }
@@ -373,13 +373,13 @@ mod tests {
         let handle = service.make_request_handle();
 
         let result1 = handle.make_request(5).await;
-        assert_eq!(result1, Some(Ok(10)));
+        assert_eq!(result1.unwrap(), 10);
 
         let reconfig_result = service.reconfigure(config).await;
-        assert_eq!(reconfig_result, Some(Ok(())));
+        assert!(reconfig_result.is_ok());
 
         let result2 = handle.make_request(5).await;
-        assert_eq!(result2, Some(Ok(10)));
+        assert_eq!(result2.unwrap(), 10);
 
         service.request_immediate_stop().await;
     }
@@ -391,12 +391,12 @@ mod tests {
         let handle = service.make_request_handle();
 
         let result1 = handle.make_request(5).await;
-        assert_eq!(result1, Some(Ok(10)));
+        assert_eq!(result1.unwrap(), 10);
 
         service.request_immediate_stop().await;
 
         let result2 = handle.make_request(5).await;
-        assert_eq!(result2, None);
+        assert!(result2.is_err());
     }
 
     #[tokio::test]
@@ -406,12 +406,12 @@ mod tests {
         let handle = service.make_request_handle();
 
         let result1 = handle.make_request(5).await;
-        assert_eq!(result1, Some(Ok(10)));
+        assert_eq!(result1.unwrap(), 10);
 
         service.request_graceful_stop().await;
 
         let result2 = handle.make_request(5).await;
-        assert_eq!(result2, None);
+        assert!(result2.is_err());
     }
 
     #[tokio::test]
@@ -423,7 +423,7 @@ mod tests {
         service.request_immediate_stop().await;
 
         let result = handle.make_request(5).await;
-        assert_eq!(result, None);
+        assert!(result.is_err());
     }
 
     #[derive(Clone)]
@@ -431,7 +431,7 @@ mod tests {
 
     impl Service<TestConfig> for FailingServiceFactory {
         type Response = FailingService;
-        type Error = String;
+        type Error = anyhow::Error;
         type Future = Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
         fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -441,7 +441,7 @@ mod tests {
         fn call(&mut self, config: TestConfig) -> Self::Future {
             Box::pin(async move {
                 if config.multiplier < 0 {
-                    Err("Invalid multiplier".to_string())
+                    Err(anyhow::anyhow!("Invalid multiplier"))
                 } else {
                     Ok(FailingService { multiplier: config.multiplier })
                 }
@@ -455,7 +455,7 @@ mod tests {
 
     impl Service<i32> for FailingService {
         type Response = i32;
-        type Error = String;
+        type Error = anyhow::Error;
         type Future = Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
         fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -475,7 +475,8 @@ mod tests {
         let handle = service.make_request_handle();
 
         let result = handle.make_request(5).await;
-        assert_eq!(result, Some(Err("Invalid multiplier".to_string())));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid multiplier"));
 
         service.request_immediate_stop().await;
     }
@@ -487,14 +488,16 @@ mod tests {
         let handle = service.make_request_handle();
 
         let result1 = handle.make_request(5).await;
-        assert_eq!(result1, Some(Ok(10)));
+        assert_eq!(result1.unwrap(), 10);
 
         let bad_config = TestConfig { multiplier: -1 };
         let reconfig_result = service.reconfigure(bad_config).await;
-        assert_eq!(reconfig_result, Some(Err("Invalid multiplier".to_string())));
+        assert!(reconfig_result.is_err());
+        assert!(reconfig_result.unwrap_err().to_string().contains("Invalid multiplier"));
 
         let result2 = handle.make_request(5).await;
-        assert_eq!(result2, Some(Err("Invalid multiplier".to_string())));
+        assert!(result2.is_err());
+        assert!(result2.unwrap_err().to_string().contains("misconfigured"));
 
         service.request_immediate_stop().await;
     }
@@ -506,7 +509,7 @@ mod tests {
         let handle = service.make_request_handle();
 
         let result = handle.make_request(42).await;
-        assert_eq!(result, Some(Ok(42)));
+        assert_eq!(result.unwrap(), 42);
 
         service.request_immediate_stop().await;
     }
@@ -522,8 +525,8 @@ mod tests {
         let result1 = handle1.make_request(3).await;
         let result2 = handle2.make_request(7).await;
 
-        assert_eq!(result1, Some(Ok(6)));
-        assert_eq!(result2, Some(Ok(14)));
+        assert_eq!(result1.unwrap(), 6);
+        assert_eq!(result2.unwrap(), 14);
 
         service.request_immediate_stop().await;
     }
