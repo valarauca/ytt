@@ -1,0 +1,7 @@
+error: LuaKind is only for enums. Use LuaIntegration for structs.
+ --> tests/compile_fail/enum_on_struct.rs:4:1
+  |
+4 | / pub struct ShouldFail {
+5 | |     field: i32,
+6 | | }
+  | |_^

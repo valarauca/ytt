@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 
 use serde::{Serialize, Serializer, ser::SerializeMap};
-use serde_json::Value;
+use serde_json::value::{Value};
 
-use crate::{completions::response::ToolCall, providers::Provider};
+use crate::{
+    completions::response::ToolCall,
+    providers::Provider,
+    primatives::{Temperature, FrequencyPenalty, PresencePenalty, RepetitionPenalty, Bias, MinP, TopA},
+};
 
 // type Request = {
 //   // Either "messages" or "prompt" is required
@@ -96,7 +100,7 @@ pub struct Request {
 
     /// LLM parameter: temperature (Range: [0, 2]).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f64>,
+    pub temperature: Option<Temperature>,
 
     /// Tool calling: tools will be passed down as-is (if supported).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -116,25 +120,25 @@ pub struct Request {
     pub top_k: Option<u64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub frequency_penalty: Option<f64>,
+    pub frequency_penalty: Option<FrequencyPenalty>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub presence_penalty: Option<f64>,
+    pub presence_penalty: Option<PresencePenalty>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub repetition_penalty: Option<f64>,
+    pub repetition_penalty: Option<RepetitionPenalty>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub logit_bias: Option<HashMap<String, f64>>,
+    pub logit_bias: Option<HashMap<String, Bias>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_logprobs: Option<u64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub min_p: Option<f64>,
+    pub min_p: Option<MinP>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub top_a: Option<f64>,
+    pub top_a: Option<TopA>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
@@ -807,9 +811,11 @@ mod tests {
 
     #[test]
     fn request() {
+        use crate::primatives::{Temperature, FrequencyPenalty, PresencePenalty, RepetitionPenalty, Bias, MinP, TopA};
+
         // Prepare a sample logit_bias value.
         let mut logit_bias = HashMap::new();
-        logit_bias.insert("1".to_string(), 0.5);
+        logit_bias.insert("1".to_string(), Bias::clamp_new(0.5));
 
         // Build a Request instance with a mix of fields.
         let req = Request {
@@ -823,19 +829,19 @@ mod tests {
             ])),
             stream: Some(true),
             max_tokens: Some(100),
-            temperature: Some(0.5),
+            temperature: Some(Temperature::clamp_new(0.5)),
             tools: None,
             tool_choice: None,
             seed: Some(42),
             top_p: Some(0.95),
             top_k: Some(10),
-            frequency_penalty: Some(0.2),
-            presence_penalty: Some(0.3),
-            repetition_penalty: Some(0.8),
+            frequency_penalty: Some(FrequencyPenalty::clamp_new(0.2)),
+            presence_penalty: Some(PresencePenalty::clamp_new(0.3)),
+            repetition_penalty: Some(RepetitionPenalty::clamp_new(0.8)),
             logit_bias: Some(logit_bias),
             top_logprobs: Some(5),
-            min_p: Some(0.1),
-            top_a: Some(0.2),
+            min_p: Some(MinP::clamp_new(0.1)),
+            top_a: Some(TopA::clamp_new(0.2)),
             user: Some("test".into()),
             prediction: Some(Prediction {
                 content: "Predicted content".to_string(),

@@ -1,0 +1,14 @@
+error[E0277]: can't compare `ShouldFail` with `ShouldFail`
+ --> tests/compile_fail/eq_without_partialeq.rs:3:10
+  |
+3 | #[derive(LuaIntegration, Clone)]
+  |          ^^^^^^^^^^^^^^ no implementation for `ShouldFail == ShouldFail`
+  |
+  = help: the trait `PartialEq` is not implemented for `ShouldFail`
+  = help: see issue #48214
+  = note: this error originates in the derive macro `LuaIntegration` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `ShouldFail` with `#[derive(PartialEq)]`
+  |
+5 + #[derive(PartialEq)]
+6 | pub struct ShouldFail {
+  |

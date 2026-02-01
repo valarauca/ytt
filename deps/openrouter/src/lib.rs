@@ -20,6 +20,7 @@ pub mod generation;
 pub mod keys;
 pub mod models;
 pub mod providers;
+pub mod primatives;
 
 pub use crate::{
     completions::Request,

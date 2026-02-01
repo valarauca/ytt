@@ -1,0 +1,7 @@
+error: LuaIntegration does not support enums. Use LuaKind instead.
+ --> tests/compile_fail/struct_on_enum.rs:4:1
+  |
+4 | / pub enum ShouldFail {
+5 | |     Variant,
+6 | | }
+  | |_^

@@ -1,3 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["runtime-model", "in-tree/tree", "in-tree/reloadable","deps/openrouter", "yttrium"]
+members = [
+    "runtime-model",
+    "in-tree/tree",
+    "in-tree/reloadable",
+    "deps/openrouter",
+    "yttrium",
+    "in-tree/lua-integration",
+    "deps/openrouter",
+]
