@@ -46,3 +46,4 @@ fn factory_impl(config: ClientConfig) -> Ready<Result<ClientErrorFixed,anyhow::E
 
 type ErrFunc = fn(reqwest::Error) -> anyhow::Error;
 type ClientErrorFixed = MapErr<reqwest::Client,ErrFunc>;
+
