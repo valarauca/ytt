@@ -1,7 +1,7 @@
 //! <https://openrouter.ai/docs/errors>
 use std::ops::Deref;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// OpenRouter puts the returned data into a `error` field.
@@ -20,7 +20,7 @@ impl Deref for Response {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct Error {
     /// Please refer to the OpenRouter documentation on what the
