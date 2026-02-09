@@ -1,0 +1,9 @@
+[package]
+name = "lua-runtime"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mlua = { version = "0.11.6", default-features = false, features = ["luau", "luau-jit", "async", "serde", "anyhow"] }
+serde = { version = "1.0", optional = true }
+serde_json = { version = "1.0", optional = true }

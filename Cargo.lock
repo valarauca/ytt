@@ -773,6 +773,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lua-runtime"
+version = "0.1.0"
+dependencies = [
+ "mlua",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "luau0-src"
 version = "0.18.1+luau706"
 source = "registry+https://github.com/rust-lang/crates.io-index"
