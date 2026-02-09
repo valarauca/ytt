@@ -3,7 +3,7 @@ use time::OffsetDateTime;
 
 use crate::{error::Error, providers::Provider};
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct Response {
     pub id: String,
@@ -19,17 +19,18 @@ pub struct Response {
     pub usage: Option<ResponseUsage>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u8)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub enum Object {
     #[serde(rename = "chat.completion")]
-    Completion,
+    Completion = 1,
     #[serde(rename = "chat.completion.chunk")]
     Chunk,
 }
 
 /// Usage statistics.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct ResponseUsage {
     pub prompt_tokens: u32,
@@ -40,17 +41,17 @@ pub struct ResponseUsage {
     pub total_tokens: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PromptTokenDetails {
     pub cached_tokens: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CompletionTokenDetails {
     pub reasoning_tokens: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 #[serde(untagged)]
 pub enum Choice {
@@ -60,7 +61,7 @@ pub enum Choice {
 }
 
 /// A non‑chat (plain text) choice.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct NonChatChoice {
     pub logprobs: Option<LogProbs>,
@@ -75,7 +76,7 @@ pub struct NonChatChoice {
 }
 
 /// A non‑streaming chat choice, which carries a complete message.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct NonStreamingChoice {
     // Have not yet figured out the type.
@@ -93,7 +94,7 @@ pub struct NonStreamingChoice {
 }
 
 /// A streaming chat choice, which carries a delta update.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct StreamingChoice {
     #[serde(default)]
@@ -105,7 +106,7 @@ pub struct StreamingChoice {
 
 // Currently not implemented. Likely equal to this one:
 // https://platform.openai.com/docs/api-reference/chat/object
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct LogProbs {
     pub content: Vec<()>,
@@ -113,7 +114,7 @@ pub struct LogProbs {
 }
 
 /// A full message for non‑streaming choices.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct Message {
     pub role: String,
@@ -126,7 +127,7 @@ pub struct Message {
 }
 
 /// A delta update for streaming choices.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct Delta {
     #[serde(default)]
@@ -137,7 +138,7 @@ pub struct Delta {
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct ToolCall {
     pub id: String,
@@ -147,7 +148,7 @@ pub struct ToolCall {
     pub function: FunctionCall,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct FunctionCall {
     pub name: String,

@@ -6,7 +6,7 @@ use serde_json::Value;
 
 /// OpenRouter puts the returned data into a `error` field.
 /// A [`Deref`] implementation makes this type transparent.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct Response {
     pub error: Error,
@@ -20,7 +20,7 @@ impl Deref for Response {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct Error {
     /// Please refer to the OpenRouter documentation on what the

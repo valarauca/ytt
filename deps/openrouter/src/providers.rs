@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u32)]
 pub enum Provider {
     #[serde(rename = "AI21")]
-    AI21,
+    AI21 = 1,
     #[serde(rename = "AionLabs")]
     AionLabs,
     #[serde(rename = "Alibaba")]

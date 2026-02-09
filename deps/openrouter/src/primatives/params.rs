@@ -217,6 +217,16 @@ limited_float! {
 }
 
 limited_float! {
+    pub struct TopP
+    where
+        Low: 0.0f64,
+        High: 1.0f64,
+    {
+        inner: f64,
+    }
+}
+
+limited_float! {
     pub struct TopA
     where
         Low: 0.0f64,

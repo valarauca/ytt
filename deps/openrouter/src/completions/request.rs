@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use serde::{Serialize, Deserialize, Serializer, Deserializer, ser::SerializeMap, de::{self, Visitor, MapAccess}};
 use serde_json::value::{Value};
@@ -6,7 +6,7 @@ use serde_json::value::{Value};
 use crate::{
     completions::response::ToolCall,
     providers::Provider,
-    primatives::{Temperature, FrequencyPenalty, PresencePenalty, RepetitionPenalty, Bias, MinP, TopA},
+    primatives::{*},
 };
 
 // type Request = {
@@ -68,7 +68,7 @@ use crate::{
 /// Represents a request to the model.
 /// Note that both `messages` and `prompt` are optional at the type level;
 /// additional validation would be needed to ensure at least one is provided.
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Hash)]
 pub struct Request {
     /// Allows to define a chat history with various participants and mixed content.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -114,7 +114,7 @@ pub struct Request {
     pub seed: Option<u64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub top_p: Option<f64>,
+    pub top_p: Option<TopP>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_k: Option<u64>,
@@ -129,7 +129,7 @@ pub struct Request {
     pub repetition_penalty: Option<RepetitionPenalty>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub logit_bias: Option<HashMap<String, Bias>>,
+    pub logit_bias: Option<BTreeMap<String, Bias>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_logprobs: Option<u64>,
@@ -168,16 +168,17 @@ pub struct Request {
     pub usage: Option<Usage>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 #[serde(untagged)]
 pub enum Stop {
     Single(String),
     Multiple(Vec<String>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum ResponseFormat {
-    JsonObject,
+    JsonObject = 1,
 }
 
 impl Serialize for ResponseFormat {
@@ -232,7 +233,7 @@ impl<'de> Deserialize<'de> for ResponseFormat {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct Prediction {
     pub content: String,
 }
@@ -293,15 +294,16 @@ impl<'de> Deserialize<'de> for Prediction {
 }
 
 /// Represents the only allowed value for `route`.
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash)]
+#[repr(u8)]
 pub enum Route {
     #[serde(rename = "fallback")]
-    Fallback,
+    Fallback = 1,
 }
 
 /// OpenRouter routes requests to the best available providers for your model.
 /// By default, requests are load balanced across the top providers to maximize uptime.
-#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Hash, Serialize, Deserialize)]
 pub struct ProviderPreferences {
     /// Whether to allow backup providers to serve requests
     /// - true: (default) when the primary provider (or your custom providers in "order") is unavailable, use the next best provider.
@@ -338,19 +340,21 @@ pub struct ProviderPreferences {
     pub sort: Option<Sorting>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum DataCollection {
     #[serde(rename = "allow")]
     #[default]
-    Allow,
+    Allow = 1,
     #[serde(rename = "deny")]
     Deny,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum Quantization {
     #[serde(rename = "int8")]
-    Int8,
+    Int8 = 1,
     #[serde(rename = "fp6")]
     Fp6,
     #[serde(rename = "int4")]
@@ -367,10 +371,11 @@ pub enum Quantization {
     Unknown,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum Sorting {
     #[serde(rename = "price")]
-    Price,
+    Price = 1,
     #[serde(rename = "throughput")]
     Throughput,
     #[serde(rename = "latency")]
@@ -395,7 +400,7 @@ pub enum Sorting {
 /// Represents a Message which can be one of:
 /// - A user/assistant/system message with content as either a plain string or an array of ContentPart.
 /// - A tool message with additional tool_call_id.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
     User {
@@ -455,7 +460,7 @@ fn skip_content_if_empty(content: &Option<Content>) -> bool {
 }
 
 /// The content of a non-tool message, which can be a plain string or an array of content parts.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 #[serde(untagged)]
 pub enum Content {
     Plain(String),
@@ -464,7 +469,7 @@ pub enum Content {
 
 // type ContentPart = TextContent | ImageContentPart;
 /// Represents a part of content which can be either a text block or an image.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 #[serde(tag = "type")]
 pub enum ContentPart {
     // type TextContent = {
@@ -495,7 +500,7 @@ pub enum ContentPart {
 }
 
 /// Represents an image content part.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageUrl {
     /// URL or base64 encoded image data.
     pub url: String,
@@ -513,7 +518,7 @@ fn is_auto(detail: &Option<String>) -> bool {
 //   type: 'function';
 //   function: FunctionDescription;
 // };
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Tool {
     pub function: FunctionDescription,
 }
@@ -578,7 +583,7 @@ impl<'de> Deserialize<'de> for Tool {
 //   name: string;
 //   parameters: object; // JSON Schema object
 // };
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FunctionDescription {
     /// The name of the function.
     pub name: String,
@@ -601,9 +606,10 @@ pub struct FunctionDescription {
 //         name: string;
 //       };
 //     };
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum ToolChoice {
-    None,
+    None = 1,
     Auto,
     Required,
     Function(String),
@@ -700,7 +706,7 @@ impl<'de> Deserialize<'de> for ToolChoice {
 
 /// As described in the OpenRouter documentation, only [`Reasoning::effort`] or [`Reasoning::max_tokens`]
 /// should be set.
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Reasoning {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<Effort>,
@@ -710,10 +716,11 @@ pub struct Reasoning {
     pub exclude: Option<bool>,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u8)]
 pub enum Effort {
     #[serde(rename = "high")]
-    High,
+    High = 1,
     #[default]
     #[serde(rename = "medium")]
     Medium,
@@ -721,12 +728,12 @@ pub enum Effort {
     Low,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Usage {
     pub include: bool,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CacheControl {
     #[serde(rename = "type")]
     r#type: String,
@@ -1156,7 +1163,7 @@ mod tests {
             tools: None,
             tool_choice: Some(ToolChoice::Auto),
             seed: Some(42),
-            top_p: Some(0.9),
+            top_p: Some(TopP::try_from(0.9).unwrap()),
             top_k: Some(50),
             frequency_penalty: Some(FrequencyPenalty::clamp_new(0.5)),
             presence_penalty: None,
@@ -1444,7 +1451,7 @@ mod tests {
         use crate::primatives::{Temperature, FrequencyPenalty, PresencePenalty, RepetitionPenalty, Bias, MinP, TopA};
 
         // Prepare a sample logit_bias value.
-        let mut logit_bias = HashMap::new();
+        let mut logit_bias = BTreeMap::new();
         logit_bias.insert("1".to_string(), Bias::clamp_new(0.5));
 
         // Build a Request instance with a mix of fields.
@@ -1463,7 +1470,7 @@ mod tests {
             tools: None,
             tool_choice: None,
             seed: Some(42),
-            top_p: Some(0.95),
+            top_p: Some(TopP::try_from(0.95).unwrap()),
             top_k: Some(10),
             frequency_penalty: Some(FrequencyPenalty::clamp_new(0.2)),
             presence_penalty: Some(PresencePenalty::clamp_new(0.3)),
