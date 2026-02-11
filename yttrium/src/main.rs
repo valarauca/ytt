@@ -3,7 +3,9 @@
 
 pub mod endpoints;
 pub mod config;
+pub mod signal;
 
-fn main() {
-    println!("Hello, world!");
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    Ok(())
 }
