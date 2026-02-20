@@ -1,8 +1,8 @@
 //! <https://openrouter.ai/docs/errors>
 use std::ops::Deref;
 
+use lua_integration::{LuaIntegration,JsonValue};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 /// OpenRouter puts the returned data into a `error` field.
 /// A [`Deref`] implementation makes this type transparent.
@@ -20,7 +20,7 @@ impl Deref for Response {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 #[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct Error {
     /// Please refer to the OpenRouter documentation on what the
@@ -29,7 +29,7 @@ pub struct Error {
     /// look at a generation ID that does not exist.
     pub code: u16,
     pub message: String,
-    pub metadata: Option<Value>,
+    pub metadata: Option<JsonValue>,
 }
 
 impl Error {
@@ -48,6 +48,7 @@ mod tests {
 
     use pretty_assertions::assert_eq;
     use serde_json::json;
+    use lua_integration::{JsonValue};
 
     use super::{Error, Response};
 
@@ -73,12 +74,12 @@ mod tests {
         let expected = Error {
             code: 502,
             message: "Provider returned error".to_string(),
-            metadata: Some(json!({
+            metadata: Some(JsonValue::from(json!({
                 "raw": "{\n  \"error\": {\n    \"code\": 500,\n    \"message\": \"An internal error has occurred. Please retry or report in https://developers.generativeai.google/guide/troubleshooting\",\n    \"status\": \"INTERNAL\"\n  }\n}\n",
                 "provider_name": "Google AI Studio",
                 "isDownstreamPipeClean": true,
                 "isErrorUpstreamFault": true,
-            })),
+            }))),
         };
 
         assert_eq!(expected, response.error);

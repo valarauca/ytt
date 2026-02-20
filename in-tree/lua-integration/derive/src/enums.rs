@@ -39,6 +39,16 @@ fn expand_enum_impl(input: DeriveInput) -> Result<TokenStream> {
                 #serde_methods
             }
         }
+
+        impl #impl_generics ::lua_integration::traits::LuaSetterArg for #name #ty_generics #where_clause {
+            type FromLuaKind = ::mlua::UserDataRef<Self>;
+            fn set_from_lua(&mut self, arg: ::mlua::UserDataRef<Self>) {
+                self.clone_from(&*arg);
+            }
+            fn from_lua(arg: ::mlua::UserDataRef<Self>) -> Self {
+                (*arg).clone()
+            }
+        }
     };
 
     Ok(expanded.into())

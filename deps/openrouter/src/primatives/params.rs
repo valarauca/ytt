@@ -146,6 +146,15 @@ macro_rules! limited_float {
                 x.inner
             }
         }
+        impl ::lua_integration::traits::LuaSetterArg for $type {
+            type FromLuaKind = ::mlua::UserDataRef<$type>;
+            fn set_from_lua(&mut self, arg: ::mlua::UserDataRef<$type>) {
+                *self = *arg;
+            }
+            fn from_lua(arg: ::mlua::UserDataRef<$type>) -> Self {
+                *arg
+            }
+        }
         impl mlua::UserData for $type {
             fn add_methods<M: mlua::UserDataMethods<$type>>(m: &mut M) {
                 m.add_function("clamp_new", |_, arg: mlua::Value| -> mlua::Result<Self> {

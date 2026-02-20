@@ -15,3 +15,9 @@ pub use serde;
 
 #[cfg(feature = "serde")]
 pub use serde_json;
+
+pub mod traits;
+
+#[cfg(feature = "serde")]
+pub use self::traits::{JsonValue};
+

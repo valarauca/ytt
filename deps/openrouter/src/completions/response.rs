@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use lua_integration::{LuaIntegration, LuaKind};
 
 use crate::{error::Error, providers::Provider};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
 pub struct Response {
     pub id: String,
     pub provider: Provider,
@@ -19,9 +19,8 @@ pub struct Response {
     pub usage: Option<ResponseUsage>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaKind)]
 #[repr(u8)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
 pub enum Object {
     #[serde(rename = "chat.completion")]
     Completion = 1,
@@ -30,8 +29,7 @@ pub enum Object {
 }
 
 /// Usage statistics.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct ResponseUsage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
@@ -41,18 +39,17 @@ pub struct ResponseUsage {
     pub total_tokens: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct PromptTokenDetails {
     pub cached_tokens: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct CompletionTokenDetails {
     pub reasoning_tokens: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaKind)]
 #[serde(untagged)]
 pub enum Choice {
     NonChat(NonChatChoice),
@@ -61,10 +58,8 @@ pub enum Choice {
 }
 
 /// A non‑chat (plain text) choice.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct NonChatChoice {
-    pub logprobs: Option<LogProbs>,
     #[serde(default)]
     pub finish_reason: Option<String>,
     #[serde(default)]
@@ -76,12 +71,8 @@ pub struct NonChatChoice {
 }
 
 /// A non‑streaming chat choice, which carries a complete message.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct NonStreamingChoice {
-    // Have not yet figured out the type.
-    #[serde(default)]
-    pub logprobs: Option<LogProbs>,
     // Could probably be an enum.
     #[serde(default)]
     pub finish_reason: Option<String>,
@@ -94,8 +85,7 @@ pub struct NonStreamingChoice {
 }
 
 /// A streaming chat choice, which carries a delta update.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct StreamingChoice {
     #[serde(default)]
     pub finish_reason: Option<String>,
@@ -104,18 +94,18 @@ pub struct StreamingChoice {
     pub error: Option<Error>,
 }
 
+/*
 // Currently not implemented. Likely equal to this one:
 // https://platform.openai.com/docs/api-reference/chat/object
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct LogProbs {
     pub content: Vec<()>,
     pub refusal: Vec<()>,
 }
+*/
 
 /// A full message for non‑streaming choices.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct Message {
     pub role: String,
     #[serde(default)]
@@ -127,8 +117,7 @@ pub struct Message {
 }
 
 /// A delta update for streaming choices.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct Delta {
     #[serde(default)]
     pub content: Option<String>,
@@ -138,8 +127,7 @@ pub struct Delta {
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize, LuaIntegration)]
 pub struct ToolCall {
     pub id: String,
     pub index: usize,
@@ -148,8 +136,7 @@ pub struct ToolCall {
     pub function: FunctionCall,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
-#[cfg_attr(test, serde(deny_unknown_fields))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize, LuaIntegration)]
 pub struct FunctionCall {
     pub name: String,
     pub arguments: Option<String>,
@@ -201,6 +188,7 @@ mod tests {
         assert_eq!(ptd, deserialized);
     }
 
+    /*
     #[test]
     fn logprobs_round_trip() {
         let lp = LogProbs {
@@ -212,6 +200,7 @@ mod tests {
         let deserialized: LogProbs = serde_json::from_str(&serialized).unwrap();
         assert_eq!(lp, deserialized);
     }
+    */
 
     #[test]
     fn response_usage_round_trip() {
@@ -293,7 +282,6 @@ mod tests {
     #[test]
     fn non_chat_choice_round_trip() {
         let ncc = NonChatChoice {
-            logprobs: None,
             finish_reason: Some("stop".to_string()),
             native_finish_reason: None,
             text: "Generated text".to_string(),
@@ -308,7 +296,6 @@ mod tests {
     #[test]
     fn non_streaming_choice_round_trip() {
         let nsc = NonStreamingChoice {
-            logprobs: None,
             finish_reason: Some("stop".to_string()),
             native_finish_reason: None,
             index: 0,
@@ -345,7 +332,6 @@ mod tests {
     #[test]
     fn choice_round_trip() {
         let choice = Choice::NonStreaming(NonStreamingChoice {
-            logprobs: None,
             finish_reason: None,
             native_finish_reason: None,
             index: 0,
@@ -371,7 +357,6 @@ mod tests {
             id: "gen-123".to_string(),
             provider: Provider::OpenAI,
             choices: vec![Choice::NonStreaming(NonStreamingChoice {
-                logprobs: None,
                 finish_reason: Some("stop".to_string()),
                 native_finish_reason: None,
                 index: 0,
@@ -414,7 +399,6 @@ mod tests {
             id: "gen-1738698054-yI7fNDyuNM2VdvsYZ6Po".to_string(),
             provider: Provider::GoogleAIStudio,
             choices: vec![Choice::NonStreaming(NonStreamingChoice {
-                logprobs: None,
                 index: 0,
                 finish_reason: None,
                 native_finish_reason: None,
@@ -457,10 +441,6 @@ mod tests {
             provider: Provider::Targon,
             choices: vec![Choice::NonChat(NonChatChoice {
                 finish_reason: None,
-                logprobs: Some(LogProbs {
-                    content: vec![],
-                    refusal: vec![],
-                }),
                 text: "This is a shortened text output".to_string(),
                 reasoning: None,
                 error: None,

@@ -1,6 +1,7 @@
+use lua_integration::LuaKind;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, LuaKind)]
 #[repr(u32)]
 pub enum Provider {
     #[serde(rename = "AI21")]

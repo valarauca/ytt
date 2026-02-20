@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
+use lua_integration::{LuaIntegration, LuaKind, JsonValue};
 use serde::{Serialize, Deserialize, Serializer, Deserializer, ser::SerializeMap, de::{self, Visitor, MapAccess}};
-use serde_json::value::{Value};
 
 use crate::{
     completions::response::ToolCall,
@@ -68,7 +68,7 @@ use crate::{
 /// Represents a request to the model.
 /// Note that both `messages` and `prompt` are optional at the type level;
 /// additional validation would be needed to ensure at least one is provided.
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Hash, LuaIntegration)]
 pub struct Request {
     /// Allows to define a chat history with various participants and mixed content.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -168,14 +168,14 @@ pub struct Request {
     pub usage: Option<Usage>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash, LuaKind)]
 #[serde(untagged)]
 pub enum Stop {
     Single(String),
     Multiple(Vec<String>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, LuaKind)]
 #[repr(u8)]
 pub enum ResponseFormat {
     JsonObject = 1,
@@ -233,7 +233,7 @@ impl<'de> Deserialize<'de> for ResponseFormat {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, LuaIntegration)]
 pub struct Prediction {
     pub content: String,
 }
@@ -294,7 +294,7 @@ impl<'de> Deserialize<'de> for Prediction {
 }
 
 /// Represents the only allowed value for `route`.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, LuaKind)]
 #[repr(u8)]
 pub enum Route {
     #[serde(rename = "fallback")]
@@ -303,7 +303,7 @@ pub enum Route {
 
 /// OpenRouter routes requests to the best available providers for your model.
 /// By default, requests are load balanced across the top providers to maximize uptime.
-#[derive(Debug, Default, PartialEq, Eq, Clone, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct ProviderPreferences {
     /// Whether to allow backup providers to serve requests
     /// - true: (default) when the primary provider (or your custom providers in "order") is unavailable, use the next best provider.
@@ -340,7 +340,7 @@ pub struct ProviderPreferences {
     pub sort: Option<Sorting>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, Hash, LuaKind)]
 #[repr(u8)]
 pub enum DataCollection {
     #[serde(rename = "allow")]
@@ -350,7 +350,7 @@ pub enum DataCollection {
     Deny,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash, LuaKind)]
 #[repr(u8)]
 pub enum Quantization {
     #[serde(rename = "int8")]
@@ -371,7 +371,7 @@ pub enum Quantization {
     Unknown,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash, LuaKind)]
 #[repr(u8)]
 pub enum Sorting {
     #[serde(rename = "price")]
@@ -400,7 +400,7 @@ pub enum Sorting {
 /// Represents a Message which can be one of:
 /// - A user/assistant/system message with content as either a plain string or an array of ContentPart.
 /// - A tool message with additional tool_call_id.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash, LuaKind)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
     User {
@@ -460,7 +460,7 @@ fn skip_content_if_empty(content: &Option<Content>) -> bool {
 }
 
 /// The content of a non-tool message, which can be a plain string or an array of content parts.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash, LuaKind)]
 #[serde(untagged)]
 pub enum Content {
     Plain(String),
@@ -469,7 +469,7 @@ pub enum Content {
 
 // type ContentPart = TextContent | ImageContentPart;
 /// Represents a part of content which can be either a text block or an image.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash, LuaKind)]
 #[serde(tag = "type")]
 pub enum ContentPart {
     // type TextContent = {
@@ -500,7 +500,7 @@ pub enum ContentPart {
 }
 
 /// Represents an image content part.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash, LuaIntegration)]
 pub struct ImageUrl {
     /// URL or base64 encoded image data.
     pub url: String,
@@ -518,7 +518,7 @@ fn is_auto(detail: &Option<String>) -> bool {
 //   type: 'function';
 //   function: FunctionDescription;
 // };
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, LuaIntegration)]
 pub struct Tool {
     pub function: FunctionDescription,
 }
@@ -583,7 +583,7 @@ impl<'de> Deserialize<'de> for Tool {
 //   name: string;
 //   parameters: object; // JSON Schema object
 // };
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct FunctionDescription {
     /// The name of the function.
     pub name: String,
@@ -594,7 +594,7 @@ pub struct FunctionDescription {
 
     /// The parameters, represented as a JSON Schema object.
     /// It is recommended to use <https://crates.io/crates/schemars>.
-    pub parameters: Value,
+    pub parameters: JsonValue,
 }
 
 // type ToolChoice =
@@ -606,7 +606,7 @@ pub struct FunctionDescription {
 //         name: string;
 //       };
 //     };
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, LuaKind)]
 #[repr(u8)]
 pub enum ToolChoice {
     None = 1,
@@ -706,7 +706,7 @@ impl<'de> Deserialize<'de> for ToolChoice {
 
 /// As described in the OpenRouter documentation, only [`Reasoning::effort`] or [`Reasoning::max_tokens`]
 /// should be set.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct Reasoning {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<Effort>,
@@ -716,7 +716,7 @@ pub struct Reasoning {
     pub exclude: Option<bool>,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, LuaKind)]
 #[repr(u8)]
 pub enum Effort {
     #[serde(rename = "high")]
@@ -728,12 +728,12 @@ pub enum Effort {
     Low,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct Usage {
     pub include: bool,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct CacheControl {
     #[serde(rename = "type")]
     r#type: String,
@@ -743,6 +743,7 @@ pub struct CacheControl {
 mod tests {
     use pretty_assertions::assert_eq;
     use serde_json::json;
+    use serde_json::{Value};
 
     use super::*;
     use crate::completions::request::{
@@ -1017,7 +1018,7 @@ mod tests {
                     "arg1": { "type": "string" }
                 },
                 "required": ["arg1"]
-            }),
+            }).into(),
         };
         let serialized = serde_json::to_string(&fd).unwrap();
         let deserialized: FunctionDescription = serde_json::from_str(&serialized).unwrap();
@@ -1026,7 +1027,7 @@ mod tests {
         let fd = FunctionDescription {
             name: "test_func2".to_string(),
             description: None,
-            parameters: json!({}),
+            parameters: json!({}).into(),
         };
         let serialized = serde_json::to_string(&fd).unwrap();
         let deserialized: FunctionDescription = serde_json::from_str(&serialized).unwrap();
@@ -1044,7 +1045,7 @@ mod tests {
                     "properties": {
                         "param1": { "type": "string" }
                     }
-                }),
+                }).into(),
             },
         };
         let serialized = serde_json::to_string(&tool).unwrap();
@@ -1232,7 +1233,7 @@ mod tests {
                     "arg2": { "type": "number" }
                 },
                 "required": ["arg1"]
-            }),
+            }).into(),
         };
 
         let serialized = serde_json::to_string(&fd).unwrap();
@@ -1252,7 +1253,7 @@ mod tests {
                     "param2": { "type": "integer" }
                 },
                 "required": ["param1"]
-            }),
+            }).into(),
         };
 
         let tool = Tool {

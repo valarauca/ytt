@@ -45,6 +45,16 @@ fn expand_struct_impl(input: DeriveInput) -> Result<TokenStream> {
                 #meta_methods
             }
         }
+
+        impl #impl_generics ::lua_integration::traits::LuaSetterArg for #name #ty_generics #where_clause {
+            type FromLuaKind = ::mlua::UserDataRef<Self>;
+            fn set_from_lua(&mut self, arg: ::mlua::UserDataRef<Self>) {
+                self.clone_from(&*arg);
+            }
+            fn from_lua(arg: ::mlua::UserDataRef<Self>) -> Self {
+                (*arg).clone()
+            }
+        }
     };
 
     Ok(expanded.into())
@@ -70,8 +80,8 @@ fn generate_field_methods(fields: &Fields) -> Result<proc_macro2::TokenStream> {
                         Ok(this.#field_name.clone())
                     });
 
-                    fields.add_field_method_set(#field_name_str, |_lua, this, value: #field_type| {
-                        this.#field_name = value;
+                    fields.add_field_method_set(#field_name_str, |_lua, this, value: <#field_type as ::lua_integration::traits::LuaSetterArg>::FromLuaKind| {
+                        <#field_type as ::lua_integration::traits::LuaSetterArg>::set_from_lua(&mut this.#field_name, value);
                         Ok(())
                     });
                 });

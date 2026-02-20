@@ -7,5 +7,5 @@ members = [
     "deps/openrouter",
     "yttrium",
     "in-tree/lua-integration",
-    "deps/openrouter", "in-tree/lua-runtime",
+    "deps/openrouter",
 ]
