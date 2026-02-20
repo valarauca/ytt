@@ -4,7 +4,7 @@ use lua_integration::{LuaIntegration, LuaKind};
 
 use crate::{error::Error, providers::Provider};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, LuaIntegration)]
 pub struct Response {
     pub id: String,
     pub provider: Provider,

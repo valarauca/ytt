@@ -4,8 +4,8 @@ members = [
     "runtime-model",
     "in-tree/tree",
     "in-tree/reloadable",
+    "in-tree/lua-integration",
+    "in-tree/lua-runtime",
     "deps/openrouter",
     "yttrium",
-    "in-tree/lua-integration",
-    "deps/openrouter",
 ]

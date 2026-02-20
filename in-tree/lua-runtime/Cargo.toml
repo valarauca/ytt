@@ -5,5 +5,12 @@ edition = "2024"
 
 [dependencies]
 mlua = { version = "0.11.6", default-features = false, features = ["luau", "luau-jit", "async", "serde", "anyhow"] }
-serde = { version = "1.0", optional = true }
-serde_json = { version = "1.0", optional = true }
+serde = { version = "1.0" }
+serde_json = { version = "1.0" }
+lua-integration = { path = "../lua-integration", features = ["serde"] }
+tower-service = "0.3.3"
+openrouter = { path = "../../deps/openrouter" }
+runtime-model = { path = "../../runtime-model" }
+anyhow = "1.0.101"
+futures-util = { version = "0.3.31", default-features = false, features = ["alloc"] }
+tower = { version = "0.5.3", features = ["util"] }
