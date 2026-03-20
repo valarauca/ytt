@@ -6,10 +6,8 @@ use runtime_model::services::web_request::config::{ClientConfig};
 use crate::endpoints::config::RouterConfig;
 
 #[derive(Serialize,Deserialize,Clone,Debug,PartialEq)]
+#[serde(transparent)]
 pub struct Config {
-    // ensures 'some client' configuration always exists
-    #[serde(default)]
-    default_client: ClientConfig,
     list: Vec<ConfigEntry>,
 }
 
@@ -22,5 +20,22 @@ pub enum ConfigEntry {
     Listener(RouterConfig),
 }
 
+
+impl Config {
+
+    fn get_clients(&self) -> impl Iterator<Item=&ClientConfig> {
+        self.list.iter().filter_map(|x| match x {
+            ConfigEntry::Client(c) => Some(c),
+            _ => None,
+        })
+    }
+
+    fn get_listener(&self) -> impl Iterator<Item=&RouterConfig> {
+        self.list.iter().filter_map(|x| match x {
+            ConfigEntry::Listener(r) => Some(r),
+            _ => None,
+        })
+    }
+}
 
 

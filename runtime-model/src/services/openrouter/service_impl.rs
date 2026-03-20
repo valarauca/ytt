@@ -62,7 +62,7 @@ impl tower::Service<ORRequest> for OpenRouterService {
     type Response = ORResponse;
     type Error = anyhow::Error;
     type Future = MaybeFuture<Result<Self::Response,Self::Error>>;
-    fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
         // This will tunnel through to `reqwest::Client` "eventually" so this hsould be fine
         Poll::Ready(Ok(()))
     }
