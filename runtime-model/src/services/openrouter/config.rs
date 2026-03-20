@@ -8,5 +8,6 @@ pub struct OpenRouterConfiguration {
     pub(crate) buffer: usize,
     pub(crate) client: String,
     pub(crate) path: String,
+    pub(crate) chat_completions: bool,
 }
 

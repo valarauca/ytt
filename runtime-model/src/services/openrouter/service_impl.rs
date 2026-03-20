@@ -1,67 +1,69 @@
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap},
+    task::{Context,Poll},
+    sync::Arc,
+};
+use tower::{service_fn};
 use openrouter::{
     OpenRouter,
-    Completion,
-    completions::{Response as ORResponse},
+    Completion, ChatCompletion,
+    completions::{Response as ORResponse, Request as ORRequest},
 };
 use reqwest::{Request as HttpRequest,Response as HttpResponse};
+use futures_util::future::{Either,FutureExt,TryFuture,TryFutureExt};
 
 use super::config::OpenRouterConfiguration;
 
 use crate::{
-    adapters::service_tree::{RegisteredServiceTree,get_tree},
-    adapters::path_helper::path_split,
-    adapters::service_kind::ServiceManagement,
-    adapters::maybe_async::{MaybeFuture,make_boxed,make_ready},
+    adapters::{
+        reconfigurable::ReconfigurableService,
+        RegisteredServiceTree,get_tree,
+        MaybeFuture,make_boxed,make_ready,
+        ServiceManagement,
+        BoxCloneSyncService,
+        path_split, 
+    },
 };
 
-/*
-pub async fn initialize_open_router(
-    config: OpenRouterConfiguration,
-    tree: RegisteredServiceTree,
-) -> Result<(),anyhow::Error> {
-    let client_path = config.client;
-    let own_path = config.path;
-    let config = config.interior;
-
-    let client_path_vec = path_split(&client_path);
-    let own_path_vec = path_split(&own_path);
-
-    let client = tree.get_service(&client_path_vec,ServiceManagement::get_web_client).await?;
-    let or_client = OpenRouter::<_>::new(config,client);
-    // TODO insert model
-
-    let models = or_client.models(&[]).async?;
-    let mut models_map = HashMap::new();
-    for model in models {
-        let endpoints = or_client.models(model.id)?;
-    }
-}
-*/
-
-/*
-async fn root_factory_impl(config: OpenRouterConfiguration) -> ReconfigurableService<OpenRouterConfiguration,ORRequest,ORResponse> {
-    let client_path = config.client;
-    let own_path = config.path;
-    let config = config.interior;
+fn default_loader(config: OpenRouterConfiguration) -> ReconfigurableService<OpenRouterConfiguration,ORRequest,ORResponse> {
+    let func = service_fn(root_factory_impl);
     let buffer = config.buffer;
-
-    let client_path_vec = path_split(&client_path);
-    let own_path_vec = path_split(&own_path);
-    let tree = get_tree();
-    let client = tree.get_service(&client_path_vec,ServiceManagement::get_web_client).await?;
+    ReconfigurableService::new(config, buffer, func)
 }
-*/
 
+async fn root_factory_impl(config: OpenRouterConfiguration) -> Result<OpenRouterService,anyhow::Error> {
+    use openrouter::config::OpenRouterBaseConfig;
+
+    let base_config: OpenRouterBaseConfig = config.interior;
+    let chat: bool = config.chat_completions;
+
+    let tree = get_tree();
+
+    let client: BoxCloneSyncService<HttpRequest,HttpResponse,anyhow::Error>  = {
+        let client_path = path_split(&config.client);
+        tree.get_service(&client_path,ServiceManagement::get_web_client).await?
+    };
+    Ok(OpenRouterService {
+        interior: OpenRouter::new(base_config,client),
+        routing_options: None,
+        chat_completion: chat,
+    })
+}
+
+
+
+#[derive(Clone)]
 pub struct OpenRouterService {
-    interior: OpenRouter<tower::util::BoxCloneService<HttpRequest,HttpResponse,anyhow::Error>,anyhow::Error>,
-    routing_options: Option<Box<dyn FnMut(&mut ORRequest) -> Result<(),anyhow::Error> + Send + 'static>>,
+    interior: OpenRouter<BoxCloneSyncService<HttpRequest,HttpResponse,anyhow::Error>>,
+    routing_options: Option<Arc<dyn Fn(&mut ORRequest) -> Result<(),anyhow::Error> + Send + Sync + 'static>>,
+    chat_completion: bool,
 }
 impl tower::Service<ORRequest> for OpenRouterService {
     type Response = ORResponse;
     type Error = anyhow::Error;
     type Future = MaybeFuture<Result<Self::Response,Self::Error>>;
     fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
+        // This will tunnel through to `reqwest::Client` "eventually" so this hsould be fine
         Poll::Ready(Ok(()))
     }
     fn call(&mut self, req: ORRequest) -> Self::Future {
@@ -72,9 +74,10 @@ impl tower::Service<ORRequest> for OpenRouterService {
                 Err(e) => return make_ready(Err(e)),
             };
         }
-        if self.chat {
-            let fut = self.interior.chat_completion(req);
+        if self.chat_completion {
+            self.interior.call(ChatCompletion(req))
         } else {
+            self.interior.call(Completion(req))
         }
     }
 }

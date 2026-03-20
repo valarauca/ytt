@@ -1,4 +1,4 @@
-
+#![allow(unused_imports,dead_code)]
 pub mod traits;
 pub mod primatives;
 pub mod adapters;

@@ -38,6 +38,7 @@ pub static DEFAULT_USER_AGENT: &str = concat!(
     env!("CARGO_PKG_VERSION")
 );
 
+#[derive(Clone)]
 pub struct OpenRouter<S>
 where
     S: Service<reqwest::Request, Response = reqwest::Response, Error = anyhow::Error>,
@@ -49,26 +50,22 @@ where
 impl<S> OpenRouter<S>
 where
     S: Service<reqwest::Request, Response = reqwest::Response, Error = anyhow::Error>,
-    <S as Service<reqwest::Request>>::Future: Send + 'static,
+    <S as Service<reqwest::Request>>::Future: Future<Output = Result<Response, anyhow::Error>> + Send + 'static,
 {
     /// Constructs an OpenRouter instance from a config and service.
     pub fn new(config: OpenRouterBaseConfig, service: S) -> Self {
         Self { config, service }
     }
 
-    fn execute(&mut self, request: reqwest::Request) -> S::Future
-    where
-        S::Future: Future<Output = Result<Response, anyhow::Error>>,
-    {
+    fn execute(&mut self, request: reqwest::Request) -> S::Future {
         self.service.call(request)
     }
 
-    async fn get(&mut self, path: &str) -> Result<Response, anyhow::Error>
-    where
-        S::Future: Future<Output = Result<Response, anyhow::Error>>,
-    {
-        let request = self.config.get(path).map_err(anyhow::Error::from)?;
-        self.execute(request).await
+    fn get(&mut self, path: &str) -> Either<Ready<Result<Response,anyhow::Error>>,S::Future> {
+        match self.config.get(path).map_err(anyhow::Error::from) {
+            Ok(r) => self.service.call(r).right_future(),
+            Err(e) => std::future::ready(Err(e)).left_future(),
+        }
     }
 
     fn post(&mut self, path: &str, body: Box<RawValue>) -> Either<Ready<Result<Response,Error>>,MapErr<S::Future,fn(anyhow::Error) -> Error>>
@@ -196,24 +193,29 @@ where
         type_or_err(response, |r: generation::Response| r.data).await
     }
 
+    /*
     /// This endpoint should be preferred if the [`Request`] contains multiple messages.
-    pub async fn chat_completion(&mut self, request: Request) -> Result<completions::Response, Error>
-    where
-        S::Future: Future<Output = Result<Response, anyhow::Error>>,
+    pub fn chat_completion(&mut self, request: Request) -> Either<Ready<Result<Response,anyhow::Error>>,S::Future> 
     {
-        let value = serde_json::value::to_raw_value(&request)?;
+        let value = match serde_json::value::to_raw_value(&request) {
+            Ok(v) => v,
+            Err(e) => return std::future::ready(Err(anyhow::Error::new(e))).left_future(),
+        };
+        
         let response = self.post("api/v1/chat/completions", value).await?;
 
         type_or_err(response, |r: completions::Response| r).await
     }
+    */
 
     pub fn chat_completion_sync(&mut self, request: Request) -> ServiceFuture {
         let value = match serde_json::value::to_raw_value(&request) {
             Ok(x) => x,
-            Err(e) => return ready(Err(Error::from(e))).left_future()
+            Err(e) => return ready(Err(anyhow::Error::from(e))).left_future()
         };
         self.post("api/v1/chat/completions", value)
             .and_then(|response| async move { type_or_err(response, |r: completions::Response| r).await })
+            .map_err(|e| anyhow::Error::new(e))
             .boxed()
             .right_future()
     }
@@ -234,10 +236,11 @@ where
     pub fn completion_sync(&mut self, request: Request) -> ServiceFuture {
         let value = match serde_json::value::to_raw_value(&request) {
             Ok(x) => x,
-            Err(e) => return ready(Err(Error::from(e))).left_future()
+            Err(e) => return ready(Err(anyhow::Error::from(e))).left_future()
         };
         self.post("api/v1/completions", value)
             .and_then(|response| async move { type_or_err(response, |r: completions::Response| r).await })
+            .map_err(|e| anyhow::Error::new(e))
             .boxed()
             .right_future()
     }
@@ -246,7 +249,7 @@ where
 pub struct Completion(pub Request);
 pub struct ChatCompletion(pub Request);
 
-pub type ServiceFuture = Either<Ready<Result<completions::Response,Error>>,Pin<Box<dyn Future<Output=Result<completions::Response,Error>> + Send + 'static>>>;
+pub type ServiceFuture = Either<Ready<Result<completions::Response,anyhow::Error>>,Pin<Box<dyn Future<Output=Result<completions::Response,anyhow::Error>> + Send + 'static>>>;
 
 impl<S> tower_service::Service<ChatCompletion> for OpenRouter<S>
 where
@@ -254,7 +257,7 @@ where
     <S as Service<reqwest::Request>>::Future: Send + 'static,
 {
     type Response = completions::Response;
-    type Error = Error;
+    type Error = anyhow::Error;
     type Future = ServiceFuture;
 
     fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
@@ -274,7 +277,7 @@ where
     <S as Service<reqwest::Request>>::Future: Send + 'static,
 {
     type Response = completions::Response;
-    type Error = Error;
+    type Error = anyhow::Error;
     type Future = ServiceFuture;
 
     fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
@@ -305,10 +308,10 @@ where
 
     match status {
         StatusCode::OK => {
-            match serialize_response(&content).await {
+            match serialize_response(&content) {
                 Ok(r) => Ok(extractor(r)),
                 Err(e) => {
-                    match serialize_response::<error::Response>(&content).await {
+                    match serialize_response::<error::Response>(&content) {
                         Ok(response) => Err(Error::OpenRouter(response.error).into()),
                         Err(_) => Err(e.into()),
                     }
@@ -316,22 +319,19 @@ where
             }
         }
         _ => {
-            let response_type = serialize_response::<error::Response>(&content).await?;
+            let response_type = serialize_response::<error::Response>(&content)?;
             Err(Error::OpenRouter(response_type.error).into())
         }
     }
 }
 
-async fn serialize_response<R>(response: &str) -> Result<R, Error>
+fn serialize_response<R>(response: &str) -> Result<R, Error>
 where
     R: for<'de> serde::Deserialize<'de>,
 {
     match serde_json::from_str::<R>(response) {
         Ok(s) => Ok(s),
         Err(e) => {
-            if cfg!(debug_assertions) {
-            }
-
             Err(Error::Serde(e))
         }
     }
