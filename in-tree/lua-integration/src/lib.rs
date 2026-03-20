@@ -21,4 +21,4 @@ pub mod traits;
 #[cfg(feature = "serde")]
 pub use self::traits::{JsonValue};
 
-mod chrono_impl;
+pub mod chrono_impl;

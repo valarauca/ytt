@@ -4,7 +4,7 @@ use std::{fmt::Display, ops::Deref};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_this_or_that::{as_f64, as_opt_f64};
-use time::OffsetDateTime;
+use chrono::{DateTime,Utc};
 
 pub mod count;
 pub mod endpoints;
@@ -31,8 +31,8 @@ pub struct Model {
     pub id: String,
     pub hugging_face_id: Option<String>,
     pub name: String,
-    #[serde(with = "time::serde::timestamp")]
-    pub created: OffsetDateTime,
+    #[serde(with = "chrono::serde::ts_seconds")]
+    pub created: DateTime<Utc>,
     pub description: Option<String>,
     pub pricing: Pricing,
     pub context_length: usize,
@@ -322,7 +322,7 @@ mod tests {
 
         assert_eq!(316, response.data.len());
         assert_eq!(
-            "2025-05-25 15:53:33.0 +00:00:00",
+            "2025-05-25 15:53:33 UTC",
             response.data[0].created.to_string()
         )
     }

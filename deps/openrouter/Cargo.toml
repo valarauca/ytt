@@ -24,7 +24,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0.149", features = ["preserve_order","raw_value"] }
 serde-this-or-that = "0.5"
 thiserror = "2"
-time = { version = "0.3", features = ["serde", "parsing"] }
 url = { version = "2.5.8", features = ["serde"] }
 anyhow = "1.0.100"
 tower = "0.5.3"
@@ -33,6 +32,7 @@ tower-service = "0.3.3"
 mlua = { version = "0.11.6", default-features = false, features = ["luau", "luau-jit", "async", "serde", "anyhow"] }
 either = "1.15.0"
 lua-integration = { path = "../../in-tree/lua-integration", features = ["serde"] }
+chrono = { version = "0.4.44", features = ["serde"] }
 
 [dev-dependencies]
 dotenv = "0.15"

@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use serde::Deserialize;
-use time::OffsetDateTime;
+use lua_integration::chrono_impl::ChronoWrapper;
 
 use crate::{
     models::{Architecture, Parameter, Pricing},
@@ -29,8 +29,7 @@ impl Deref for Response {
 pub struct Endpoints {
     pub id: String,
     pub name: String,
-    #[serde(with = "time::serde::timestamp")]
-    pub created: OffsetDateTime,
+    pub created: ChronoWrapper,
     pub description: String,
     pub architecture: Architecture,
     pub endpoints: Vec<Endpoint>,

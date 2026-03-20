@@ -1,52 +1,53 @@
 
 use chrono::{DateTime, Datelike, Timelike, Utc};
-use mlua::{MetaMethod, UserData, UserDataMethods};
+use mlua::{MetaMethod, UserData, UserDataMethods,UserDataRef};
+#[cfg(feature="serde")] use serde::{Serialize,Deserialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ChronoWrapper(pub DateTime<Utc>);
+use crate::traits::{LuaSetterArg};
+
+
+#[cfg_attr(feature = "serde", derive(Clone, Debug, PartialEq, Eq, Hash,Serialize,Deserialize))]
+#[cfg_attr(not(feature = "serde"), derive(Clone, Debug, PartialEq, Eq, Hash))]
+#[cfg_attr(feature="serde", serde(transparent))]
+pub struct ChronoWrapper {
+    #[cfg_attr(feature = "serde", serde(with="chrono::serde::ts_seconds"))]
+    pub inner: DateTime<Utc>
+}
+impl ChronoWrapper {
+    pub fn new_utc(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32) -> Option<Self> {
+        use chrono::{NaiveDate,NaiveTime,NaiveDateTime};
+        let date = NaiveDate::from_ymd_opt(year, month, day)?;
+        let time = NaiveTime::from_hms_opt(hour, min, sec)?;
+        Some(Self {
+            inner: DateTime::from_naive_utc_and_offset(NaiveDateTime::new(date,time), Utc),
+        })
+    }
+    pub fn new_utc_micros(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32, micro: u32) -> Option<Self> {
+        use chrono::{NaiveDate,NaiveTime,NaiveDateTime};
+        let date = NaiveDate::from_ymd_opt(year, month, day)?;
+        let time = NaiveTime::from_hms_micro_opt(hour, min, sec, micro)?;
+        Some(Self {
+            inner: DateTime::from_naive_utc_and_offset(NaiveDateTime::new(date,time), Utc),
+        })
+    }
+}
 
 impl UserData for ChronoWrapper {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("year", |_, this, ()| Ok(this.0.year()));
-        methods.add_method("month", |_, this, ()| Ok(this.0.month()));
-        methods.add_method("day", |_, this, ()| Ok(this.0.day()));
-        methods.add_method("hour", |_, this, ()| Ok(this.0.hour()));
-        methods.add_method("minute", |_, this, ()| Ok(this.0.minute()));
-        methods.add_method("second", |_, this, ()| Ok(this.0.second()));
+        methods.add_method("year", |_, this, ()| Ok(this.inner.year()));
+        methods.add_method("month", |_, this, ()| Ok(this.inner.month()));
+        methods.add_method("day", |_, this, ()| Ok(this.inner.day()));
+        methods.add_method("hour", |_, this, ()| Ok(this.inner.hour()));
+        methods.add_method("minute", |_, this, ()| Ok(this.inner.minute()));
+        methods.add_method("second", |_, this, ()| Ok(this.inner.second()));
         methods.add_method("seconds_float", |_, this, ()| {
-            Ok(this.0.timestamp() as f64 + this.0.timestamp_subsec_nanos() as f64 / 1_000_000_000.0)
+            Ok(this.inner.timestamp() as f64 + this.inner.timestamp_subsec_nanos() as f64 / 1_000_000_000.0)
         });
-        methods.add_method("millis", |_, this, ()| Ok(this.0.timestamp_millis()));
-        methods.add_method("millisfloat", |_, this, ()| Ok(this.0.timestamp_millis() as f64));
+        methods.add_method("millis", |_, this, ()| Ok(this.inner.timestamp_millis()));
+        methods.add_method("millisfloat", |_, this, ()| Ok(this.inner.timestamp_millis() as f64));
         methods.add_meta_method(MetaMethod::ToString, |_, this, ()| {
-            Ok(this.0.to_rfc3339())
+            Ok(this.inner.to_rfc3339())
         });
-    }
-}
-
-#[cfg(feature = "serde")]
-impl serde::ser::Serialize for ChronoWrapper {
-    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        self.0.serialize(s)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'de> serde::de::Deserialize<'de> for ChronoWrapper {
-    fn deserialize<D>(d: D) -> Result<Self, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        Ok(Self(<DateTime<Utc> as serde::de::Deserialize>::deserialize(d)?))
-    }
-}
-
-impl mlua::IntoLua for ChronoWrapper {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
-        lua.create_userdata(self)?.into_lua(lua)
     }
 }
 
@@ -60,5 +61,46 @@ impl mlua::FromLua for ChronoWrapper {
                 message: None,
             }),
         }
+    }
+}
+
+impl LuaSetterArg for ChronoWrapper {
+    type FromLuaKind = UserDataRef<Self>;
+    fn set_from_lua(&mut self, arg: Self::FromLuaKind) {
+        *self = <Self as LuaSetterArg>::from_lua(arg);
+    }
+    fn from_lua(arg: Self::FromLuaKind) -> Self {
+        (*arg).clone()
+    }
+}
+
+#[cfg(feature = "serde")]
+pub mod rfc3339 {
+    use std::{
+        borrow::Cow,
+        str::FromStr,
+    };
+
+    use super::{ChronoWrapper};
+    use chrono::{DateTime,Utc};
+
+    #[cfg(feature="serde")]
+    use serde::{de::{Deserializer,Deserialize},ser::{Serialize,Serializer}};
+
+    pub fn deserialize<'de,D>(d: D) -> Result<ChronoWrapper,D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let x = Cow::<'de,str>::deserialize(d)?;
+        let dt = DateTime::<Utc>::from_str(&x)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+        Ok(ChronoWrapper { inner: dt }) 
+    }
+
+    pub fn serialize<S>(this: &ChronoWrapper, s: S) -> Result<S::Ok,S::Error>
+    where
+        S: Serializer,
+    {
+        this.inner.serialize(s)
     }
 }

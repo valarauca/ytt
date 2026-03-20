@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
-use lua_integration::{LuaIntegration, LuaKind};
+use lua_integration::{LuaIntegration, LuaKind, chrono_impl::ChronoWrapper};
 
 use crate::{error::Error, providers::Provider};
 
@@ -9,8 +8,7 @@ pub struct Response {
     pub id: String,
     pub provider: Provider,
     pub choices: Vec<Choice>,
-    #[serde(with = "time::serde::timestamp")]
-    pub created: OffsetDateTime,
+    pub created: ChronoWrapper,
     pub model: String,
     pub object: Object,
     #[serde(default)]
@@ -147,7 +145,7 @@ mod tests {
     use std::fs::read_to_string;
 
     use pretty_assertions::assert_eq;
-    use time::{Date, Month, OffsetDateTime, Time};
+    use lua_integration::chrono_impl::ChronoWrapper;
 
     use super::*;
 
@@ -369,10 +367,7 @@ mod tests {
                 },
                 error: None,
             })],
-            created: OffsetDateTime::new_utc(
-                Date::from_calendar_date(2025, Month::January, 1).unwrap(),
-                Time::from_hms(0, 0, 0).unwrap(),
-            ),
+            created: ChronoWrapper::new_utc(2025, 1, 1, 0, 0 ,0).unwrap(),
             model: "gpt-4".to_string(),
             object: Object::Completion,
             system_fingerprint: None,
@@ -411,10 +406,13 @@ mod tests {
                 },
                 error: None,
             })],
+            created: ChronoWrapper::new_utc(2025, 2, 4, 19, 40, 54).unwrap(),
+            /*
             created: OffsetDateTime::new_utc(
                 Date::from_calendar_date(2025, Month::February, 4).unwrap(),
                 Time::from_hms(19, 40, 54).unwrap(),
             ),
+            */
             model: "google/gemini-2.0-flash-thinking-exp".to_string(),
             object: Object::Completion,
             system_fingerprint: None,
@@ -446,10 +444,13 @@ mod tests {
                 error: None,
                 native_finish_reason: None,
             })],
+            created: ChronoWrapper::new_utc(2025, 2, 4, 19, 24, 38).unwrap(),
+            /*
             created: OffsetDateTime::new_utc(
                 Date::from_calendar_date(2025, Month::February, 4).unwrap(),
                 Time::from_hms(19, 24, 38).unwrap(),
             ),
+            */
             model: "deepseek/deepseek-r1-distill-llama-70b".to_string(),
             object: Object::Completion,
             system_fingerprint: None,

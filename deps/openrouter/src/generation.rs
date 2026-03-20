@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use serde::Deserialize;
-use time::OffsetDateTime;
+use lua_integration::chrono_impl::ChronoWrapper;
 
 use crate::providers::Provider;
 
@@ -28,8 +28,8 @@ pub struct Generation {
     pub total_cost: f64,
     pub cache_discount: Option<f64>,
     pub provider_name: Option<Provider>,
-    #[serde(with = "time::serde::rfc3339")]
-    pub created_at: OffsetDateTime,
+    #[serde(with = "lua_integration::chrono_impl::rfc3339")]
+    pub created_at: ChronoWrapper,
     pub model: String,
     pub app_id: Option<u32>,
     pub streamed: Option<bool>,
@@ -73,7 +73,8 @@ pub enum FinishReason {
 mod tests {
     use std::fs::read_to_string;
 
-    use time::{Date, Month, Time};
+    use lua_integration::chrono_impl::ChronoWrapper;
+    //use time::{Date, Month, Time};
 
     use super::*;
 
@@ -88,10 +89,13 @@ mod tests {
             total_cost: 0.0,
             cache_discount: None,
             provider_name: Some(Provider::GoogleAIStudio),
+            created_at: ChronoWrapper::new_utc_micros(2025,01,25,21,58,42, 249238).unwrap(),
+            /********
             created_at: OffsetDateTime::new_utc(
                 Date::from_calendar_date(2025, Month::January, 25).unwrap(),
                 Time::from_hms_micro(21, 58, 42, 249238).unwrap(),
             ),
+            */
             model: "google/gemini-2.0-flash-thinking-exp-01-21:free".to_string(),
             app_id: Some(167635),
             streamed: Some(true),
