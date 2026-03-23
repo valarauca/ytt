@@ -71,6 +71,11 @@ impl ServiceManagement {
 
         match self {
             Self::EndPoint(client) => Ok(Webshit::from(client.get_service())),
+            Self::WebClient(client) => {
+                let axum_handle = client.make_axum_service();
+                let boxed = BoxCloneSyncService::new(axum_handle);
+                Ok(Webshit::from(boxed))
+            },
             _ => Err(not_an_http_server::<Self>()),
         }
     }

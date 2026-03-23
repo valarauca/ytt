@@ -15,6 +15,7 @@ pub struct OpenRouterConfiguration {
     pub(crate) path: String,
     pub(crate) chat_completions: bool,
 }
+/*
 impl crate::services::traits::ServiceConfig for OpenRouterConfiguration {
     fn can_initialize(&self) -> MaybeFuture {
         let path = path_split(&self.client);
@@ -26,3 +27,4 @@ impl crate::services::traits::ServiceConfig for OpenRouterConfiguration {
     fn initialize(&self) -> MaybeFuture<Result<(),anyhow::Error>> {
     }
 }
+*/

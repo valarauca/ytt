@@ -279,4 +279,26 @@ mod tests {
         let result = convert_axum_to_reqwest(axum_req).await;
         assert!(result.is_ok());
     }
+
+    #[tokio::test]
+    async fn test_webclient_in_service_tree() {
+        use crate::adapters::{get_tree, service_kind::ServiceManagement};
+        use crate::services::web_request::service_impl::load_default_client;
+        use crate::services::web_request::config::ClientLoader;
+
+        let tree = get_tree();
+        let client_loader = ClientLoader {
+            path: vec!["default-client".to_string()],
+            buffer: 1024,
+            config: super::ClientConfig::default(),
+        };
+
+        load_default_client(tree.clone(), client_loader);
+
+        let path = &["default-client"];
+        let result = tree.get_service_exact(path, |service| service.get_web_client()).await;
+        assert!(result.is_ok());
+        let endpoint_result = tree.get_service_exact(path, |service| service.get_endpoint()).await;
+        assert!(endpoint_result.is_ok());
+    }
 }
