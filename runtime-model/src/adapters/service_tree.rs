@@ -9,7 +9,7 @@ use tree::{Tree,RecursiveListing};
 
 use crate::traits::{BoxedConfig, no_such_service};
 use super::maybe_async::{MaybeFuture,MaybeErrAccess,MutexGuard,make_boxed,make_ready};
-use super::ServiceManagement;
+use super::{ServiceManagement,GetTreePath};
 
 
 static GLOBAL_TREE: LazyLock<RegisteredServiceTree> = LazyLock::new(|| RegisteredServiceTree::default());
@@ -40,37 +40,59 @@ impl Default for RegisteredServiceTree {
 }
 impl RegisteredServiceTree {
 
-    pub fn get_service_exact<O>(&self, path: &[&str], func: ServiceFetch<O>) -> MaybeFuture<Result<O,anyhow::Error>>
+    pub fn get_service_exact<O,P>(&self, path: &P, func: ServiceFetch<O>) -> MaybeFuture<Result<O,anyhow::Error>>
     where
+        P: GetTreePath + ?Sized,
         O: Send + 'static,
         ServiceFetch<O>: Send + 'static,
     {
+        let path = match path.get_tree_path() {
+            Ok(x) => x,
+            Err(e) => {
+                return make_ready(Err(e));
+            }
+        };
         self.inner
-            .get(path)
+            .get(&path)
             .map(|s| -> ManagementGuard { (*s).clone() })
-            .ok_or_else(|| no_such_service(path))
+            .ok_or_else(|| no_such_service(&path))
             .do_read::<_,O>(func)
     }
 
-    pub fn get_service<O>(&self, path: &[&str], func: ServiceFetch<O>) -> MaybeFuture<Result<O,anyhow::Error>>
+    pub fn get_service<O,P>(&self, path: &P, func: ServiceFetch<O>) -> MaybeFuture<Result<O,anyhow::Error>>
     where
+        P: GetTreePath + ?Sized,
         O: Send + 'static,
         ServiceFetch<O>: Send + 'static,
     {
+        let path = match path.get_tree_path() {
+            Ok(x) => x,
+            Err(e) => {
+                return make_ready(Err(e));
+            }
+        };
         self.inner
-            .get_or_parent(path)
+            .get_or_parent(&path)
             .map(|s| -> ManagementGuard { (*s).clone() })
-            .ok_or_else(|| no_such_service(path))
+            .ok_or_else(|| no_such_service(&path))
             .do_read::<_,O>(func)
     }
 
     /// Trigger a service reload.
-    pub fn reload(&self, path: &[&str], config: BoxedConfig) -> MaybeFuture<Result<(),anyhow::Error>>
+    pub fn reload<P>(&self, path: &P, config: BoxedConfig) -> MaybeFuture<Result<(),anyhow::Error>>
+    where
+        P: GetTreePath + ?Sized,
     {
+        let path = match path.get_tree_path() {
+            Ok(x) => x,
+            Err(e) => {
+                return make_ready(Err(e));
+            }
+        };
         let arc = match self.inner
-            .get(path)
+            .get(&path)
             .map(|s| -> ManagementGuard { (*s).clone() })
-            .ok_or_else(|| no_such_service(path))
+            .ok_or_else(|| no_such_service(&path))
         {
             Err(e) => return make_ready(Err(e)),
             Ok(x) => x,
@@ -91,23 +113,43 @@ impl RegisteredServiceTree {
         }
     }
 
-    pub fn insert(&self, path: &[&str], item: ServiceManagement) -> bool {
-        self.inner.insert(path, Arc::new(RwLock::new(item))).is_some()
+    pub fn insert<P>(&self, path: &P, item: ServiceManagement) -> anyhow::Result<bool> 
+    where
+        P: GetTreePath + ?Sized,
+    {
+        let path = path.get_tree_path()?;
+        Ok(self.inner.insert(&path, Arc::new(RwLock::new(item))).is_some())
     }
 
-    pub fn remove(&self, path: &[&str]) -> Result<(),anyhow::Error> {
-        self.inner.remove(path).map(|_| ()).ok_or_else(|| no_such_service(path))
+    pub fn remove<P>(&self, path: &P) -> Result<(),anyhow::Error>
+    where
+        P: GetTreePath + ?Sized,
+    {
+        let path = path.get_tree_path()?;
+        self.inner.remove(&path).map(|_| ()).ok_or_else(|| no_such_service(&path))
     }
 
-    pub fn contains_path(&self,path: &[&str]) -> bool {
-        self.inner.contains_path(path)
+    pub fn contains_path<P>(&self, path: &P) -> Result<bool,anyhow::Error>
+    where
+        P: GetTreePath + ?Sized,
+    {
+        let path = path.get_tree_path()?;
+        Ok(self.inner.contains_path(&path))
     }
 
-    pub fn list_children(&self, path: &[&str]) -> Option<HashSet<String, BuildHasherDefault<SeaHasher>>> {
-        self.inner.list_children(path)
+    pub fn list_children<P>(&self, path: &P) -> anyhow::Result<Option<HashSet<String, BuildHasherDefault<SeaHasher>>>>
+    where
+        P: GetTreePath + ?Sized,
+    {
+        let path = path.get_tree_path()?;
+        Ok(self.inner.list_children(&path))
     }
 
-    pub fn list_children_recursive(&self, path: &[&str]) -> Option<RecursiveListing<String>> {
-        self.inner.list_children_recursive(path)
+    pub fn list_children_recursive<P>(&self, path: &P) -> anyhow::Result<Option<RecursiveListing<String>>>
+    where
+        P: GetTreePath + ?Sized,
+    {
+        let path = path.get_tree_path()?;
+        Ok(self.inner.list_children_recursive(&path))
     }
 }

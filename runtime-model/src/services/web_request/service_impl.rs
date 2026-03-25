@@ -24,8 +24,8 @@ pub fn load_default_client(
     let reconfigurable_service = default_loader(client_config.buffer, client_config.config);
     let web_client = WebClientService::new(reconfigurable_service);
     let manager = ServiceManagement::from(web_client);
-    let path_vec = path_relocate(&path);
-    tree.insert(&path_vec, manager);
+    // TODO: logging
+    let _ = tree.insert(&path, manager);
 }
 
 fn default_loader(
