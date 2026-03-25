@@ -1,12 +1,17 @@
 use std::{
     pin::Pin,
     task::{Context, Poll},
+    future::Future,
 };
 use tower::Service;
 use http::{Request as HttpRequest, Response as HttpResponse};
-use axum::body::Body as AxumBody;
+use axum::body::{Body as AxumBody};
+use hyper::body::{Incoming as HyperBody};
+use http_body_util::{BodyExt, combinators::BoxBody, BodyDataStream, StreamBody};
+use http_body::Frame;
+use futures_util::{Stream,StreamExt};
+use bytes::Bytes;
 use reqwest::{Request as ReqwestRequest, Response as ReqwestResponse};
-use http_body_util::BodyExt;
 
 use crate::{
     adapters::reconfigurable::{RequestHandle, ReconfigurableService},
@@ -14,11 +19,23 @@ use crate::{
 };
 use super::config::ClientConfig;
 
+/// Public API into the underlying [`reqwest::Client`] instance.
+///
+/// This acts a handle which can called on to work with tree interactions.
+/// reloading its configuration or converting it into underlying sources.
 pub struct WebClientService {
     service: ReconfigurableService<ClientConfig, ReqwestRequest, ReqwestResponse>,
 }
 
+
+pub type PinnedFuture<T> = Pin<Box<dyn Future<Output=T> + Send + 'static>>;
+pub type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
+pub type PinnedStreamBody = Pin<Box<dyn Stream<Item=Result<Frame<Bytes>,StdError>> + Send + 'static>>;
+pub type StreamingBody = http_body_util::StreamBody<PinnedStreamBody>;
+
 impl WebClientService {
+
+
     pub fn new(service: ReconfigurableService<ClientConfig, ReqwestRequest, ReqwestResponse>) -> Self {
         Self { service }
     }
@@ -40,6 +57,12 @@ impl WebClientService {
             handle: self.service.make_request_handle(),
         }
     }
+
+    pub fn make_hyper_service(&self) -> HyperServiceHandle {
+        HyperServiceHandle {
+            handle: self.service.make_request_handle(),
+        }
+    }
 }
 
 pub struct ReqwestServiceHandle {
@@ -57,7 +80,7 @@ impl Clone for ReqwestServiceHandle {
 impl Service<ReqwestRequest> for ReqwestServiceHandle {
     type Response = ReqwestResponse;
     type Error = anyhow::Error;
-    type Future = Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+    type Future = PinnedFuture<Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.handle.poll_ready(cx)
@@ -83,7 +106,7 @@ impl Clone for AxumServiceHandle {
 impl Service<HttpRequest<AxumBody>> for AxumServiceHandle {
     type Response = HttpResponse<AxumBody>;
     type Error = anyhow::Error;
-    type Future = Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+    type Future = PinnedFuture<Result<Self::Response,Self::Error>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -92,191 +115,89 @@ impl Service<HttpRequest<AxumBody>> for AxumServiceHandle {
     fn call(&mut self, req: HttpRequest<AxumBody>) -> Self::Future {
         let mut handle = self.handle.clone();
         Box::pin(async move {
-            let reqwest_request = convert_axum_to_reqwest(req).await?;
-            let reqwest_response = handle.call(reqwest_request).await?;
-            let axum_response = convert_reqwest_to_axum(reqwest_response).await?;
-            Ok(axum_response)
+
+            let s = req.uri().to_string();
+            let url = s.parse::<reqwest::Url>()?;
+            let (parts, body) = req.into_parts();
+            let mut request = ReqwestRequest::new(parts.method, url);
+            *request.headers_mut() = parts.headers;
+            *request.body_mut() = Some(reqwest::Body::wrap_stream(body.into_data_stream()));
+            *request.version_mut() = parts.version;
+
+            let resp = handle.call(request).await?;
+
+            let mut b = http::response::Builder::new()
+                .status(resp.status())
+                .version(resp.version());
+            b.headers_mut().unwrap().clone_from(resp.headers());
+            let stream: Pin<Box<dyn Stream<Item=Result<Bytes,StdError>> + Send + 'static>> = Box::pin(
+                resp.bytes_stream()
+                    .map(|x| -> Result<Bytes,Box<dyn std::error::Error + Send + Sync + 'static>> {
+                        match x {
+                            Ok(x) => Ok(x),
+                            Err(e) => Err(Box::new(e))
+                        }
+                    })
+            );
+            Ok(b.body(AxumBody::from_stream(stream))?)
         })
     }
 }
 
-pub async fn convert_axum_to_reqwest(
-    req: HttpRequest<AxumBody>
-) -> anyhow::Result<ReqwestRequest> {
-    let (parts, body) = req.into_parts();
-
-    let body_bytes = body
-        .collect()
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to collect body: {}", e))?
-        .to_bytes();
-
-    let url = parts.uri.to_string();
-
-    let mut reqwest_builder = reqwest::Client::new()
-        .request(parts.method, &url);
-
-    for (name, value) in parts.headers.iter() {
-        reqwest_builder = reqwest_builder.header(name, value);
-    }
-
-    if !body_bytes.is_empty() {
-        reqwest_builder = reqwest_builder.body(body_bytes);
-    }
-
-    reqwest_builder.build()
-        .map_err(|e| anyhow::anyhow!("Failed to build reqwest request: {}", e))
+pub struct HyperServiceHandle {
+    handle: RequestHandle<ClientConfig, ReqwestRequest, ReqwestResponse>,
 }
 
-pub async fn convert_reqwest_to_axum(
-    resp: ReqwestResponse
-) -> anyhow::Result<HttpResponse<AxumBody>> {
-    let status = resp.status();
-    let headers = resp.headers().clone();
-    let body_bytes = resp.bytes().await
-        .map_err(|e| anyhow::anyhow!("Failed to read response body: {}", e))?;
-
-    let mut response = HttpResponse::builder()
-        .status(status);
-
-    for (name, value) in headers.iter() {
-        response = response.header(name, value);
+impl Clone for HyperServiceHandle {
+    fn clone(&self) -> Self {
+        Self {
+            handle: self.handle.clone(),
+        }
     }
-
-    response.body(AxumBody::from(body_bytes))
-        .map_err(|e| anyhow::anyhow!("Failed to build axum response: {}", e))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use http::{Method, StatusCode};
 
-    #[tokio::test]
-    async fn test_convert_axum_to_reqwest_simple_get() {
-        let req = HttpRequest::builder()
-            .method(Method::GET)
-            .uri("http://example.com/test")
-            .body(AxumBody::empty())
-            .unwrap();
+impl Service<HttpRequest<HyperBody>> for HyperServiceHandle {
+    type Response = HttpResponse<StreamingBody>;
+    type Error = StdError;
+    type Future = PinnedFuture<Result<Self::Response,Self::Error>>;
 
-        let result = convert_axum_to_reqwest(req).await;
-        assert!(result.is_ok());
-
-        let reqwest_req = result.unwrap();
-        assert_eq!(reqwest_req.method(), Method::GET);
-        assert!(reqwest_req.url().as_str().contains("/test"));
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 
-    #[tokio::test]
-    async fn test_convert_axum_to_reqwest_with_headers() {
-        let req = HttpRequest::builder()
-            .method(Method::POST)
-            .uri("http://example.com/api/endpoint")
-            .header("Content-Type", "application/json")
-            .header("Authorization", "Bearer token123")
-            .body(AxumBody::empty())
-            .unwrap();
+    fn call(&mut self, req: HttpRequest<HyperBody>) -> Self::Future {
+        let mut handle = self.handle.clone();
+        Box::pin(async move {
 
-        let result = convert_axum_to_reqwest(req).await;
-        assert!(result.is_ok());
+            // setup the request
+            let s = req.uri().to_string();
+            let url = s.parse::<reqwest::Url>()?;
+            let (parts, body) = req.into_parts();
+            let mut request = ReqwestRequest::new(parts.method, url);
+            *request.headers_mut() = parts.headers;
+            *request.body_mut() = Some(reqwest::Body::wrap(body));
+            *request.version_mut() = parts.version;
 
-        let reqwest_req = result.unwrap();
-        assert_eq!(reqwest_req.method(), Method::POST);
-        assert_eq!(
-            reqwest_req.headers().get("Content-Type").unwrap(),
-            "application/json"
-        );
-        assert_eq!(
-            reqwest_req.headers().get("Authorization").unwrap(),
-            "Bearer token123"
-        );
-    }
+            let resp = handle.call(request).await?;
 
-    #[tokio::test]
-    async fn test_convert_axum_to_reqwest_with_body() {
-        let body_content = "test body content";
-        let req = HttpRequest::builder()
-            .method(Method::POST)
-            .uri("http://example.com/submit")
-            .body(AxumBody::from(body_content))
-            .unwrap();
-
-        let result = convert_axum_to_reqwest(req).await;
-        assert!(result.is_ok());
-
-        let reqwest_req = result.unwrap();
-        assert_eq!(reqwest_req.method(), Method::POST);
-    }
-
-    #[tokio::test]
-    async fn test_convert_reqwest_to_axum_basic() {
-        use reqwest::Client;
-
-        let client = Client::new();
-        let reqwest_resp = client
-            .get("https://httpbin.org/status/200")
-            .send()
-            .await;
-
-        if let Ok(resp) = reqwest_resp {
-            let result = convert_reqwest_to_axum(resp).await;
-            assert!(result.is_ok());
-
-            let axum_resp = result.unwrap();
-            assert_eq!(axum_resp.status(), StatusCode::OK);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_convert_reqwest_to_axum_with_headers() {
-        use reqwest::Client;
-
-        let client = Client::new();
-        let reqwest_resp = client
-            .get("https://httpbin.org/response-headers?Custom-Header=TestValue")
-            .send()
-            .await;
-
-        if let Ok(resp) = reqwest_resp {
-            let result = convert_reqwest_to_axum(resp).await;
-            assert!(result.is_ok());
-        }
-    }
-
-    #[tokio::test]
-    async fn test_convert_reqwest_to_axum_with_body() {
-        use reqwest::Client;
-        use http_body_util::BodyExt;
-
-        let client = Client::new();
-        let reqwest_resp = client
-            .get("https://httpbin.org/json")
-            .send()
-            .await;
-
-        if let Ok(resp) = reqwest_resp {
-            let result = convert_reqwest_to_axum(resp).await;
-            assert!(result.is_ok());
-
-            let axum_resp = result.unwrap();
-            let body = axum_resp.into_body();
-            let bytes = body.collect().await.unwrap().to_bytes();
-            assert!(!bytes.is_empty());
-        }
-    }
-
-    #[tokio::test]
-    async fn test_round_trip_conversion() {
-        let original_body = b"Hello, World!";
-        let axum_req = HttpRequest::builder()
-            .method(Method::POST)
-            .uri("http://example.com/echo")
-            .header("Content-Type", "text/plain")
-            .body(AxumBody::from(&original_body[..]))
-            .unwrap();
-
-        let result = convert_axum_to_reqwest(axum_req).await;
-        assert!(result.is_ok());
+            // reformat the response
+            let mut b = http::response::Builder::new()
+                .status(resp.status())
+                .version(resp.version());
+            b.headers_mut().unwrap().clone_from(resp.headers());
+            let stream: PinnedStreamBody = Box::pin(
+                resp.bytes_stream()
+                    .map(|x| -> Result<Frame<Bytes>,Box<dyn std::error::Error + Send + Sync>> {
+                        match x {
+                            Ok(x) => Ok(Frame::data(x)),
+                            Err(e) => Err(Box::new(e))
+                        }
+                    })
+            );
+            let stream: StreamingBody = StreamBody::new(stream);
+            Ok(b.body(stream)?)
+        })
     }
 }
+
