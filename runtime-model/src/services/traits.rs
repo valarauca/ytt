@@ -3,6 +3,7 @@ use crate::adapters::{
 };
 
 pub trait ServiceConfig {
+
     fn can_initialize(&self) -> MaybeFuture<bool>;
     fn initialize(&self) -> MaybeFuture<Result<(),anyhow::Error>>;
 }

@@ -12,7 +12,6 @@ pub mod reconfigurable;
 
 pub mod path_helper;
 pub use self::path_helper::GetTreePath;
-pub use self::path_helper::path_split;
 
 pub mod s3service;
 pub use self::s3service::BoxCloneSyncService;

@@ -8,7 +8,6 @@ use crate::{
     adapters::reconfigurable::ReconfigurableService,
     adapters::service_tree::RegisteredServiceTree,
     adapters::service_kind::ServiceManagement,
-    adapters::path_helper::path_relocate,
 };
 use super::{
     config::{ClientConfig,ClientLoader},
