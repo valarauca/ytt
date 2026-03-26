@@ -1,5 +1,6 @@
 
 pub mod errors;
+pub mod config;
 
 pub use self::errors::{
     not_an_http_client,
@@ -10,4 +11,5 @@ pub use self::errors::{
 };
 
 pub type BoxedConfig = Box<dyn std::any::Any +'static + Send + Send>;
+
 
