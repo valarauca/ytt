@@ -1,5 +1,6 @@
 
 use std::{
+    any::{Any},
     path::{Path,PathBuf},
     collections::{BTreeSet,VecDeque},
 };
@@ -69,9 +70,9 @@ fn split_and_validate_path<'a>(arg: &'a str) -> Result<Vec<&'a str>,anyhow::Erro
  *
  */
 
-pub trait ServiceRelation<'a> {
+trait ServiceRelation<'a> {
     fn creates(&self) -> &'a [&'a str];
-    fn requires(&self) -> &'a [&'a [&'a str]];
+    fn requires<'b>(&'b self) -> std::slice::Iter<'b, &'a [&'a str]>;
 }
 
 fn path_parents<'a>(path: &'a [&'a str]) -> impl Iterator<Item=&'a [&'a str]> {
@@ -97,14 +98,20 @@ fn validate_path_parents() {
 }
 
 
-struct SrvInfo<'a> {
-    service: &'a dyn ServiceRelation<'a>,
+struct SrvInfo<'a,S> 
+where
+    S: ServiceRelation<'a> + 'a,
+{
+    service: &'a S,
     requires: BTreeSet<usize>,
     dependents: BTreeSet<usize>,
     in_degree: usize,
 }
-impl<'a> SrvInfo<'a> {
-    fn new(service: &'a dyn ServiceRelation<'a>) -> Self {
+impl<'a,S> SrvInfo<'a, S> 
+where
+    S: ServiceRelation<'a> + 'a,
+{
+    fn new(service: &'a S) -> Self {
         Self { 
             service,
             in_degree: 0usize,
@@ -117,11 +124,12 @@ impl<'a> SrvInfo<'a> {
 type SrvReq<'a> = &'a [&'a str];
 
 /// Kahns algorithm for topological sorting
-pub fn load_order<'s,I>(services: I) -> anyhow::Result<Vec<&'s dyn ServiceRelation<'s>>>
+fn load_order<'s,S,I>(services: I) -> anyhow::Result<Vec<&'s S>>
 where
-    I: IntoIterator<Item=&'s dyn ServiceRelation<'s>>,
+    S: ServiceRelation<'s> + 's,
+    I: IntoIterator<Item=&'s S>,
 {
-    let mut info: Vec<SrvInfo<'s>> = Vec::new();
+    let mut info: Vec<SrvInfo<'s, S>> = Vec::new();
     let mut path_to_id: HashMap<&'s [&'s str],usize> = HashMap::new();
     for (num, srv) in services.into_iter().enumerate() {
         debug_assert!(num == info.len() && path_to_id.len() == num);
@@ -135,9 +143,6 @@ where
     let srv_count = info.len();
     for idx in 0..srv_count {
         let reqs = info[idx].service.requires();
-        if reqs.is_empty() {
-            continue;
-        }
         for req in reqs {
             // fuzzy match by searching "up" the tree for prefix matches
             let candidate: usize = path_parents(&req)
@@ -197,3 +202,108 @@ where
     Ok(order)
 }
 
+
+
+
+/// Wraps the underlying service configuration
+pub struct ServiceConfig(Box<dyn CloneServiceInner>);
+
+impl Clone for ServiceConfig {
+    fn clone(&self) -> Self {
+        ServiceConfig(self.0.clone_box())
+    }
+}
+impl ServiceConfig {
+
+    pub fn new<T>(arg: T) -> Self
+    where
+        T: ServiceReqs + Any + Send + Sync + 'static + Clone,
+    {
+        let x: Box<dyn CloneServiceInner> = Box::new(arg);
+        ServiceConfig(x)
+    }
+
+    pub fn creates<'a>(&'a self) -> anyhow::Result<Vec<&'a str>> {
+        self.0.creates()
+    }
+
+    pub fn requires<'a>(&'a self) -> anyhow::Result<Vec<Vec<&'a str>>> {
+        self.0.requires()
+    }
+
+    pub async fn insert_into_tree(&self) -> anyhow::Result<()> {
+        self.0.insert_to_tree().await
+    }
+}
+
+trait CloneServiceInner: ServiceReqs + Send + Sync {
+    fn clone_box(&self) -> Box<dyn CloneServiceInner>;
+}
+impl<T> CloneServiceInner for T
+where
+    T: ServiceReqs + Clone,
+{
+    fn clone_box(&self) -> Box<dyn CloneServiceInner> {
+        Box::new(self.clone())
+    }
+}
+
+/// Used to declare what a service needs
+pub trait ServiceReqs: Any + Send + Sync + 'static {
+
+    /// Where this service will be inserted into the tree
+    fn creates<'a>(&'a self) -> anyhow::Result<Vec<&'a str>>;
+
+    /// What this service needs to operate
+    fn requires<'a>(&'a self) -> anyhow::Result<Vec<Vec<&'a str>>>;
+
+    /// Inser this type into the tree
+    fn insert_to_tree(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output=anyhow::Result<()>> + Send + 'static>>;
+}
+
+struct Inner<'a> {
+    service: &'a ServiceConfig,
+    creates: &'a [&'a str],
+    requires: Vec<&'a [&'a str]>,
+}
+impl<'a> ServiceRelation<'a> for Inner<'a> {
+    fn creates(&self) -> &'a [&'a str] { self.creates }
+    fn requires<'b>(&'b self) -> std::slice::Iter<'b, &'a [&'a str]> {
+        self.requires.iter()
+    }
+}
+
+pub trait IntoServiceConfig {
+    fn into_service_config(&self) -> ServiceConfig;
+}
+
+/// Loads all services in the correct order
+pub async fn loader<'a>(services: &'a [ServiceConfig]) -> anyhow::Result<()> {
+
+    let mut repr = Vec::<(&'a ServiceConfig, Vec<&'a str>, Vec<Vec<&'a str>>)>::with_capacity(services.len());
+    for s in services.iter() {
+        let creates = s.creates()?;
+        let requires = s.requires()?;
+        repr.push((s, creates, requires));
+    }
+
+    // needs to borrow from repr so we loop again
+    let mut ordering = Vec::with_capacity(services.len());
+    for idx in 0..services.len() {
+        ordering.push(Inner {
+            service: repr[idx].0,
+            creates: &repr[idx].1,
+            requires: repr[idx].2.as_slice().iter().map(|x| x.as_slice()).collect(),
+        });
+    }
+
+    // topological sort borrows the borrowed data
+    // avoids a lot of branches 
+    for item in load_order(ordering.iter())? {
+        // items are loaded in topological order
+        // sequentially as we've lost dependency information
+        item.service.insert_into_tree().await?;
+    }
+
+    Ok(())
+}
