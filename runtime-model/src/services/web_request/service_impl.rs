@@ -15,16 +15,16 @@ use super::{
 };
 
 
-pub fn load_default_client(
+pub fn load_client(
     tree: RegisteredServiceTree,
     client_config: ClientLoader,
-) {
+) -> anyhow::Result<()> {
     let path = client_config.path;
     let reconfigurable_service = default_loader(client_config.buffer, client_config.config);
     let web_client = WebClientService::new(reconfigurable_service);
     let manager = ServiceManagement::from(web_client);
-    // TODO: logging
-    let _ = tree.insert(&path, manager);
+    tree.insert(&path, manager)?;
+    Ok(())
 }
 
 fn default_loader(
