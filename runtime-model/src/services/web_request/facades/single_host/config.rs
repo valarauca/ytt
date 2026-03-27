@@ -10,12 +10,12 @@ use super::service_impl::{load_client};
 
 
 #[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
-pub struct SingleHostReverseProxy {
+pub struct SingleHostReverseProxyConfig {
     pub client: String,
     pub path: String,
     pub url: Url,
 }
-impl ServiceReqs for SingleHostReverseProxy {
+impl ServiceReqs for SingleHostReverseProxyConfig {
 
     fn creates<'a>(&'a self) -> anyhow::Result<Vec<&'a str>> {
         self.path.get_tree_path()

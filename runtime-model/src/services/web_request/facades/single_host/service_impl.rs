@@ -20,45 +20,37 @@ use crate::{
 };
 
 use super::{
-    config::{SingleHostReverseProxy},
-    service_kind::{SingleHostReverseProxyService},
+    config::{SingleHostReverseProxyConfig},
 };
 
 
 pub fn load_client(
     tree: RegisteredServiceTree,
-    config: SingleHostReverseProxy,
+    config: SingleHostReverseProxyConfig,
 ) -> anyhow::Result<()> {
     let path = config.path.clone();
-    let reconfigurable_service = default_loader(config);
-    let web_client = SingleHostReverseProxyService::new(reconfigurable_service);
-    let manager = ServiceManagement::from(web_client);
+    let func = service_fn(factory_impl);
+    let service = ReconfigurableService::new(config, 1, func);
+    let manager = ServiceManagement::from(service);
     tree.insert(&path, manager)?;
     Ok(())
 }
 
-fn default_loader(
-    config: SingleHostReverseProxy,
-) -> ReconfigurableService<SingleHostReverseProxy,ReqwestRequest,ReqwestResponse> {
-    let func = service_fn(factory_impl);
-    ReconfigurableService::new(config, 1, func)
-}
-
-async fn factory_impl(config: SingleHostReverseProxy) -> anyhow::Result<SingleHostReverseProxyCoreService> {
+async fn factory_impl(config: SingleHostReverseProxyConfig) -> anyhow::Result<SingleHostReverseProxyService> {
     let tree = get_tree();
     let forward = tree.get_service(&config.client, ServiceManagement::get_reqwest_web_client).await?;
-    Ok(SingleHostReverseProxyCoreService {
+    Ok(SingleHostReverseProxyService {
         forward,
         url: config.url,
     })
 }
 
 /// Handles the schemantics of updating the core URL
-pub struct SingleHostReverseProxyCoreService {
+pub struct SingleHostReverseProxyService {
     forward: BoxCloneSyncService<ReqwestRequest,ReqwestResponse,anyhow::Error>,
     url: Url,
 }
-impl Service<ReqwestRequest> for SingleHostReverseProxyCoreService {
+impl Service<ReqwestRequest> for SingleHostReverseProxyService {
     type Response = ReqwestResponse;
     type Error = anyhow::Error;
     type Future = MaybeFuture<Result<Self::Response,Self::Error>>;
