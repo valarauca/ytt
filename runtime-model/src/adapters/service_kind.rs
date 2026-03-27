@@ -6,6 +6,7 @@ use crate::{
     adapters::s3service::{BoxCloneSyncService},
     services::listenable::{ kinds::{ExtHttpRequest,ExtHttpResponse}, webshit::{Webshit}},
     services::web_request::service_kind::{WebClientService,StreamingBody},
+    //services::web_request::facades::single_host::service_kind::{SingleHostReverseProxyService},
 };
 
 use http::{Request as HttpRequest, Response as HttpResponse};
@@ -23,9 +24,18 @@ use openrouter::completions::{Request as ORRequest,Response as ORResponse};
 #[non_exhaustive]
 pub enum ServiceManagement {
     WebClient(WebClientService),
+    //ReverseProxySingleHost(SingleHostReverseProxyService),
     OpenRouter(Box<dyn Reconfig<ORRequest,ORResponse> + 'static>),
     EndPoint(Box<dyn Reconfig<ExtHttpRequest,ExtHttpResponse> + 'static>),
+    Web(Box<dyn Reconfig<ReqwestRequest,ReqwestResponse> + 'static>),
 }
+/*
+impl From<SingleHostReverseProxyService> for ServiceManagement {
+    fn from(item: SingleHostReverseProxyService) -> Self {
+        Self::ReverseProxySingleHost(item)
+    }
+}
+*/
 impl<C> From<ReconfigurableService<C,ExtHttpRequest,ExtHttpResponse>> for ServiceManagement
 where
     C: Any + Clone + PartialEq + Sync + Send + 'static,
@@ -77,6 +87,8 @@ impl ServiceManagement {
             Self::WebClient(client) => client.reload(config).await,
             Self::OpenRouter(client) => client.reconfig(config).await,
             Self::EndPoint(client) => client.reconfig(config).await,
+            //Self::ReverseProxySingleHost(client) => client.reconfig(config).await,
+            _ => todo!(),
         }
     }
 
@@ -104,15 +116,6 @@ impl ServiceManagement {
             _ => Err(not_an_http_client::<Self>()),
         }
     }
-
-    /*
-    pub fn get_hyper_web_client(&self) -> anyhow::Result<HyperClientHandle> {
-        match self {
-            Self::WebClient(client) => Ok(BoxCloneSyncService::new(client.make_hyper_service())),
-            _ => Err(not_an_http_client::<Self>()),
-        }
-    }
-    */
 
     /*
      * API for specifically interacting with an OpenRouter client.

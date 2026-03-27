@@ -16,59 +16,50 @@ use reqwest::{Request as ReqwestRequest, Response as ReqwestResponse};
 use crate::{
     adapters::reconfigurable::{RequestHandle, ReconfigurableService},
     traits::{BoxedConfig, type_error},
+    services::web_request::service_kind::{StreamingBody,PinnedFuture,StdError,PinnedStreamBody},
 };
-use super::config::ClientConfig;
+use super::config::SingleHostReverseProxy;
 
-/// Public API into the underlying [`reqwest::Client`] instance.
-///
-/// This acts a handle which can called on to work with tree interactions.
-/// reloading its configuration or converting it into underlying sources.
-pub struct WebClientService {
-    service: ReconfigurableService<ClientConfig, ReqwestRequest, ReqwestResponse>,
+
+pub struct SingleHostReverseProxyService {
+    service: ReconfigurableService<SingleHostReverseProxy,ReqwestRequest,ReqwestResponse>,
 }
+impl SingleHostReverseProxyService {
 
-
-pub type PinnedFuture<T> = Pin<Box<dyn Future<Output=T> + Send + 'static>>;
-pub type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
-pub type PinnedStreamBody = Pin<Box<dyn Stream<Item=Result<Frame<Bytes>,StdError>> + Send + 'static>>;
-pub type StreamingBody = http_body_util::StreamBody<PinnedStreamBody>;
-
-impl WebClientService {
-
-
-    pub fn new(service: ReconfigurableService<ClientConfig, ReqwestRequest, ReqwestResponse>) -> Self {
+    pub fn new(service: ReconfigurableService<SingleHostReverseProxy,ReqwestRequest,ReqwestResponse>) -> Self {
         Self { service }
     }
 
     pub async fn reload(&self, config: BoxedConfig) -> anyhow::Result<()> {
-        let client_config = config.downcast::<ClientConfig>()
-            .map_err(|_| type_error::<ClientConfig>())?;
-        self.service.reconfigure(*client_config).await
+        let config = config.downcast::<SingleHostReverseProxy>()
+            .map_err(|_| type_error::<SingleHostReverseProxy>())?;
+        self.service.reconfigure(*config).await
     }
 
-    pub fn make_reqwest_service(&self) -> ReqwestServiceHandle { ReqwestServiceHandle {
+    pub fn make_reqwest_service(&self) -> ReverseProxyReqwestServiceHandle {
+        ReverseProxyReqwestServiceHandle {
             handle: self.service.make_request_handle(),
         }
     }
 
-    pub fn make_axum_service(&self) -> AxumServiceHandle {
-        AxumServiceHandle {
+    pub fn make_axum_service(&self) -> ReverseProxyAxumServiceHandle {
+        ReverseProxyAxumServiceHandle {
             handle: self.service.make_request_handle(),
         }
     }
 
-    pub fn make_hyper_service(&self) -> HyperServiceHandle {
-        HyperServiceHandle {
+    pub fn make_hyper_service(&self) -> ReverseProxyHyperServiceHandle {
+        ReverseProxyHyperServiceHandle {
             handle: self.service.make_request_handle(),
         }
     }
 }
 
-pub struct ReqwestServiceHandle {
-    handle: RequestHandle<ClientConfig, ReqwestRequest, ReqwestResponse>,
+pub struct ReverseProxyReqwestServiceHandle {
+    handle: RequestHandle<SingleHostReverseProxy, ReqwestRequest, ReqwestResponse>,
 }
 
-impl Clone for ReqwestServiceHandle {
+impl Clone for ReverseProxyReqwestServiceHandle {
     fn clone(&self) -> Self {
         Self {
             handle: self.handle.clone(),
@@ -76,7 +67,7 @@ impl Clone for ReqwestServiceHandle {
     }
 }
 
-impl Service<ReqwestRequest> for ReqwestServiceHandle {
+impl Service<ReqwestRequest> for ReverseProxyReqwestServiceHandle {
     type Response = ReqwestResponse;
     type Error = anyhow::Error;
     type Future = PinnedFuture<Result<Self::Response, Self::Error>>;
@@ -90,11 +81,11 @@ impl Service<ReqwestRequest> for ReqwestServiceHandle {
     }
 }
 
-pub struct AxumServiceHandle {
-    handle: RequestHandle<ClientConfig, ReqwestRequest, ReqwestResponse>,
+pub struct ReverseProxyAxumServiceHandle {
+    handle: RequestHandle<SingleHostReverseProxy, ReqwestRequest, ReqwestResponse>,
 }
 
-impl Clone for AxumServiceHandle {
+impl Clone for ReverseProxyAxumServiceHandle {
     fn clone(&self) -> Self {
         Self {
             handle: self.handle.clone(),
@@ -102,7 +93,7 @@ impl Clone for AxumServiceHandle {
     }
 }
 
-impl Service<HttpRequest<AxumBody>> for AxumServiceHandle {
+impl Service<HttpRequest<AxumBody>> for ReverseProxyAxumServiceHandle {
     type Response = HttpResponse<AxumBody>;
     type Error = anyhow::Error;
     type Future = PinnedFuture<Result<Self::Response,Self::Error>>;
@@ -143,11 +134,11 @@ impl Service<HttpRequest<AxumBody>> for AxumServiceHandle {
     }
 }
 
-pub struct HyperServiceHandle {
-    handle: RequestHandle<ClientConfig, ReqwestRequest, ReqwestResponse>,
+pub struct ReverseProxyHyperServiceHandle {
+    handle: RequestHandle<SingleHostReverseProxy, ReqwestRequest, ReqwestResponse>,
 }
 
-impl Clone for HyperServiceHandle {
+impl Clone for ReverseProxyHyperServiceHandle {
     fn clone(&self) -> Self {
         Self {
             handle: self.handle.clone(),
@@ -156,7 +147,7 @@ impl Clone for HyperServiceHandle {
 }
 
 
-impl Service<HttpRequest<HyperBody>> for HyperServiceHandle {
+impl Service<HttpRequest<HyperBody>> for ReverseProxyHyperServiceHandle {
     type Response = HttpResponse<StreamingBody>;
     type Error = StdError;
     type Future = PinnedFuture<Result<Self::Response,Self::Error>>;
