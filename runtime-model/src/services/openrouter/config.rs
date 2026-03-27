@@ -18,11 +18,14 @@ use super::service_impl::{load_client};
 pub struct OpenRouterConfiguration {
     pub site_url: Url,
     pub api_key: WithEnv<String>,
-    pub site_title: Option<String>,
-    pub site_referer: Option<String>,
-    pub chat_completions: Option<Boolean>,
     pub client_path: String,
     pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site_referer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_completions: Option<Boolean>,
 }
 impl OpenRouterConfiguration {
     pub(crate) fn chat_completion(&self) -> bool {

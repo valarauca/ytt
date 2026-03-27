@@ -23,11 +23,12 @@ use crate::{
     },
 };
 
-use super::config::OpenRouterConfiguration;
+use super::config::{DefaultsConfig,OpenRouterSettingsConfig};
+
 
 pub fn load_client(
     tree: RegisteredServiceTree,
-    config: OpenRouterConfiguration,
+    config: OpenRouterSettingsConfig,
 ) -> anyhow::Result<()> {
     let path = config.path.clone();
     let func = service_fn(factory_impl);
@@ -37,38 +38,31 @@ pub fn load_client(
     Ok(())
 }
 
-async fn factory_impl(config: OpenRouterConfiguration) -> anyhow::Result<OpenRouterService> {
-    let chat_completion = config.chat_completion();
-    let base = config.make_base();
+async fn factory_impl(config: OpenRouterSettingsConfig) -> anyhow::Result<OpenRouterDefaultValuesService> {
     let tree = get_tree();
-    let forward = tree.get_service(&config.client_path, ServiceManagement::get_reqwest_web_client).await?;
-    let client = OpenRouter::new(base, forward);
-    Ok(OpenRouterService {
-        interior: client,
-        chat_completion,
+    let forward = tree.get_service(&config.open_router_path, ServiceManagement::get_openrouter).await?;
+    Ok(OpenRouterDefaultValuesService {
+        interior: forward,
+        config: config.defaults,
     })
 }
 
-
-pub struct OpenRouterService {
-    interior: OpenRouter<BoxCloneSyncService<ReqwestRequest,ReqwestResponse,anyhow::Error>>,
-    chat_completion: bool,
+pub struct OpenRouterDefaultValuesService {
+    interior: BoxCloneSyncService<ORRequest,ORResponse,anyhow::Error>,
+    config: DefaultsConfig,
 }
-impl tower::Service<ORRequest> for OpenRouterService {
+impl Service<ORRequest> for OpenRouterDefaultValuesService {
     type Response = ORResponse;
     type Error = anyhow::Error;
     type Future = MaybeFuture<Result<Self::Response,Self::Error>>;
 
     fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
-        self.interior.service.poll_ready(ctx)
+        self.interior.poll_ready(ctx)
     }
 
     fn call(&mut self, req: ORRequest) -> Self::Future {
-        let req = req;
-        if self.chat_completion {
-            self.interior.call(ChatCompletion(req))
-        } else {
-            self.interior.call(Completion(req))
-        }
+        let mut req = req;
+        self.config.update_request(&mut req);
+        self.interior.call(req).right_future()
     }
 }
