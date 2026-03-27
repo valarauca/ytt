@@ -11,7 +11,6 @@ use crate::{
 };
 use super::{
     config::{ClientConfig,ClientLoader},
-    service_kind::WebClientService,
 };
 
 
@@ -20,19 +19,17 @@ pub fn load_client(
     client_config: ClientLoader,
 ) -> anyhow::Result<()> {
     let path = client_config.path;
-    let reconfigurable_service = default_loader(client_config.buffer, client_config.config);
-    let web_client = WebClientService::new(reconfigurable_service);
-    let manager = ServiceManagement::from(web_client);
+    let r = default_loader(client_config.config);
+    let manager = ServiceManagement::from(r);
     tree.insert(&path, manager)?;
     Ok(())
 }
 
 fn default_loader(
-    buffer: usize,
     config: ClientConfig,
 ) -> ReconfigurableService<ClientConfig,reqwest::Request,reqwest::Response> {
     let func = service_fn(factory_impl);
-    ReconfigurableService::new(config, buffer, func)
+    ReconfigurableService::new(config, 1, func)
 }
 
 fn factory_impl(config: ClientConfig) -> Ready<Result<ClientErrorFixed,anyhow::Error>>

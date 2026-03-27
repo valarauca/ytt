@@ -5,8 +5,6 @@ use crate::{
     adapters::reconfigurable::{Reconfig,ReconfigurableService},
     adapters::s3service::{BoxCloneSyncService},
     services::listenable::{ kinds::{ExtHttpRequest,ExtHttpResponse}, webshit::{Webshit}},
-    services::web_request::service_kind::{WebClientService,StreamingBody},
-    //services::web_request::facades::single_host::service_kind::{SingleHostReverseProxyService},
 };
 
 use http::{Request as HttpRequest, Response as HttpResponse};
@@ -23,30 +21,24 @@ use openrouter::completions::{Request as ORRequest,Response as ORResponse};
 /// type is for an undelrying service
 #[non_exhaustive]
 pub enum ServiceManagement {
-    WebClient(WebClientService),
-    //ReverseProxySingleHost(SingleHostReverseProxyService),
     OpenRouter(Box<dyn Reconfig<ORRequest,ORResponse> + 'static>),
     EndPoint(Box<dyn Reconfig<ExtHttpRequest,ExtHttpResponse> + 'static>),
-    Web(Box<dyn Reconfig<ReqwestRequest,ReqwestResponse> + 'static>),
+    WebClient(Box<dyn Reconfig<ReqwestRequest,ReqwestResponse> + 'static>),
 }
-/*
-impl From<SingleHostReverseProxyService> for ServiceManagement {
-    fn from(item: SingleHostReverseProxyService) -> Self {
-        Self::ReverseProxySingleHost(item)
+impl<C> From<ReconfigurableService<C,ReqwestRequest,ReqwestResponse>> for ServiceManagement
+where
+    C: Any + Clone + PartialEq + Sync + Send + 'static,
+{
+    fn from(item: ReconfigurableService<C,ReqwestRequest,ReqwestResponse>) -> Self {
+        Self::WebClient(Box::new(item))
     }
 }
-*/
 impl<C> From<ReconfigurableService<C,ExtHttpRequest,ExtHttpResponse>> for ServiceManagement
 where
     C: Any + Clone + PartialEq + Sync + Send + 'static,
 {
     fn from(item: ReconfigurableService<C,ExtHttpRequest,ExtHttpResponse>) -> Self {
         Self::EndPoint(Box::new(item))
-    }
-}
-impl From<WebClientService> for ServiceManagement {
-    fn from(item: WebClientService) -> Self {
-        Self::WebClient(item)
     }
 }
 impl<C> From<ReconfigurableService<C,ORRequest,ORResponse>> for ServiceManagement
@@ -68,7 +60,7 @@ where
 /// re-configured if need be, thusly client requests are totally decoupled from a handle
 /// to the client. 
 pub type ReqwestClientHandle = BoxCloneSyncService<ReqwestRequest,ReqwestResponse,anyhow::Error>;
-
+/*
 /// See note on [`ReqwestClientHandle`].
 ///
 /// The only difference is this abstracts away the conversion into `Axum`'s request type.
@@ -78,17 +70,16 @@ pub type AxumClientHandle = BoxCloneSyncService<HttpRequest<AxumBody>,HttpRespon
 ///
 /// The only difference is this abstracts away the conversion into hyper's core type(s).
 pub type HyperClientHandle = BoxCloneSyncService<HttpRequest<HyperBody>,HttpResponse<StreamingBody>,anyhow::Error>;
+*/
 
 impl ServiceManagement {
 
     /// Central reloading
     pub async fn reload(&self, config: BoxedConfig) -> Result<(),anyhow::Error> {
         match self {
-            Self::WebClient(client) => client.reload(config).await,
             Self::OpenRouter(client) => client.reconfig(config).await,
             Self::EndPoint(client) => client.reconfig(config).await,
-            //Self::ReverseProxySingleHost(client) => client.reconfig(config).await,
-            _ => todo!(),
+            Self::WebClient(client) => client.reconfig(config).await,
         }
     }
 
@@ -105,14 +96,7 @@ impl ServiceManagement {
     /// Return the queried path location as a handle to the reqwest client
     pub fn get_reqwest_web_client(&self) -> anyhow::Result<ReqwestClientHandle> {
         match self {
-            Self::WebClient(client) => Ok(BoxCloneSyncService::new(client.make_reqwest_service())),
-            _ => Err(not_an_http_client::<Self>()),
-        }
-    }
-
-    pub fn get_axum_web_client(&self) -> anyhow::Result<AxumClientHandle> {
-        match self {
-            Self::WebClient(client) => Ok(BoxCloneSyncService::new(client.make_axum_service())),
+            Self::WebClient(client) => Ok(client.get_service()),
             _ => Err(not_an_http_client::<Self>()),
         }
     }

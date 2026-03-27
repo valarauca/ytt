@@ -42,14 +42,12 @@ impl Apply for ClientConfig {
 #[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub struct ClientLoader {
     pub(crate) path: String,
-    pub(crate) buffer: usize,
     pub(crate) config: ClientConfig,
 }
 impl Default for ClientLoader {
     fn default() -> ClientLoader {
         Self {
             path: "/default/client".to_string(),
-            buffer: 1,
             config: ClientConfig::default(),
         }
     }
