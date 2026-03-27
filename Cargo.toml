@@ -6,6 +6,7 @@ members = [
     "in-tree/reloadable",
     "in-tree/lua-integration",
     "in-tree/lua-runtime",
+    "in-tree/config-crap",
     "deps/openrouter",
     "yttrium",
 ]

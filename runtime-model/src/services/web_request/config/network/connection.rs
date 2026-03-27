@@ -4,7 +4,7 @@ use serde::{Deserialize,Serialize};
 use reqwest::{ClientBuilder};
 use tower::builder::ServiceBuilder;
 
-use crate::config::utils::duration::NiceDuration;
+use config_crap::duration::NiceDuration;
 
 
 

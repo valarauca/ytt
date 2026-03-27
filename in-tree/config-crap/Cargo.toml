@@ -1,0 +1,29 @@
+[package]
+name = "config-crap"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+url = { version = "2.5.8", optional = true }
+serde_json = { version = "1.0.149", optional = true }
+chrono = { version = "0.4.44", optional = true }
+minijinja = { version = "2.12.0", optional = true }
+serde_yaml = { version = "0.9.34", optional  = true }
+toml = { version = "0.9.5", optional = true, features = ["serde", "parse"] }
+json5 = { version = "0.4.1", optional = true }
+ron = { version = "0.11.0", optional = true }
+serde = { version = "1.0.228", features = ["derive"] }
+regex = "1.12.3"
+
+[dev-dependencies]
+serde_json = "1.0.149"
+
+[features]
+yaml = ["dep:serde_yaml"]
+json = ["dep:serde_json"]
+toml = ["dep:toml"]
+json5 = ["dep:json5"]
+ron = ["dep:ron"]
+minijinja = ["dep:minijinja"]
+extended_filters = ["dep:minijinja", "dep:url", "dep:chrono"]
+default = ["yaml","json","toml","json5","ron","minijinja", "extended_filters"]

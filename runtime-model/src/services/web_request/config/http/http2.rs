@@ -1,8 +1,9 @@
 use serde::{Deserialize,Serialize};
 use reqwest::{ClientBuilder};
 
+use config_crap::duration::NiceDuration;
+
 use super::super::traits::Apply;
-use crate::primatives::duration::NiceDuration;
 
 #[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]
 pub struct Http2 {

@@ -1,7 +1,7 @@
 use serde::{Deserialize,Serialize};
 use reqwest::{ClientBuilder};
+use config_crap::duration::NiceDuration;
 
-use crate::primatives::duration::NiceDuration;
 use super::super::traits::Apply;
 
 #[derive(Clone,Serialize,Deserialize,PartialEq,Eq,Debug)]

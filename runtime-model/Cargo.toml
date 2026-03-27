@@ -5,7 +5,8 @@ edition = "2024"
 
 [dependencies]
 tree = { path = "../in-tree/tree" }
-reloadable = { path = "../in-tree/reloadable" }
+config-crap = { path = "../in-tree/config-crap", default-features = false, features = ["json", "minijinja", "extended_filters"] }
+openrouter = { path = "../deps/openrouter" }
 bytes = "1.11.0"
 http = "1.4.0"
 http-body = "1.0.1"
@@ -21,7 +22,6 @@ tower = { version = "0.5.3", features = ["make", "util"] }
 futures-util = { version = "0.3.31", default-features = false, features = ["alloc"] }
 seahash = "4.1.0"
 tokio-stream = { version = "0.1.18", features = ["sync"] }
-openrouter = { path = "../deps/openrouter" }
 url = "2.5.8"
 serde_json = "1.0.149"
 anyhow = "1.0.100"

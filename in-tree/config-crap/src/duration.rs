@@ -68,9 +68,30 @@ fn get_date_time_regex() -> &'static Regex {
     })
 }
 
-/// NiceDuration is a wrapper around `std::time::Duration` to allow for Durations to be built from
-/// human readable strings.
-#[derive(Copy,Clone,Debug,PartialEq,PartialOrd,Eq,Ord,Hash,Default)]
+/// NiceDuration is a human readable representation of
+/// `std::time::Duration`. The format is roughly identical
+/// to go-lang's `time.ParseDuration` format, without
+/// negative values.
+///
+/// # Format Notes:
+///
+/// * Full EBNF is included in the source code
+/// * Order is always largest time unit to smallest
+/// * Supported units are `days`, `hours`, `minutes`, `seconds, `milliseconds`, `nanoseconds`
+/// * Integer & Float values are allowed (exponents use `e[+-]?[0-9]`)
+/// * Days can be `days|day|d`
+/// * Hours can be `hours|hrs|hr|h`
+/// * Minutes can be `minutes|mins|min|m`
+/// * Seconds can be `seconds|secs|sec|s`
+/// * Milliseconds can be `milliseconds|millis|ms`
+/// * Nanoseconds can be `nanoseconds|ns`
+/// 
+/// # Examples:
+///
+/// * `2hrs 45mins 5.2secs`: 2 hours, 45 minutes, 5 seconds, 200 ms
+/// * `100ms`: 100 milliseconds
+///
+#[derive(Copy,Clone,Debug,PartialEq,PartialOrd,Eq,Ord)]
 pub struct NiceDuration {
     data: Duration,
 }
@@ -86,7 +107,7 @@ impl NiceDuration {
 
     /// returns standard duration
     pub fn get_duration(&self) -> Duration {
-        self.data
+        self.data.clone()
     }
 
     fn to_parts(&self) -> (u64,u64,u64,u64,u64,u64) {
@@ -104,9 +125,12 @@ impl NiceDuration {
 
         (days,hours,minutes,seconds,ms,ns)
     }
+
+    #[allow(dead_code)]
     fn to_le(&self) -> [u8;16] {
         self.data.as_nanos().to_le_bytes()
     }
+    #[allow(dead_code)]
     fn from_le(arg: &[u8]) -> Self {
         let mut value = [0u8;16];
         for (idx, v) in arg.iter().enumerate().filter(|(idx,_)| *idx < 16) {
@@ -127,33 +151,27 @@ impl Serialize for NiceDuration {
     where
         S: serde::ser::Serializer,
     {
-        if s.is_human_readable() {
-            let (days,hours,minutes,seconds,ms,ns) = self.to_parts();
-            let mut buff = String::new();
-            if days > 0 {
-                std::fmt::write(&mut buff, format_args!("{}d", days)).unwrap();
-            }
-            if hours > 0 {
-                std::fmt::write(&mut buff, format_args!("{}h", hours)).unwrap();
-            }
-            if minutes > 0 {
-                std::fmt::write(&mut buff, format_args!("{}m", minutes)).unwrap();
-            }
-            if seconds > 0 {
-                std::fmt::write(&mut buff, format_args!("{}s", seconds)).unwrap();
-            }
-            if ms > 0 {
-                std::fmt::write(&mut buff, format_args!("{}ms", ms)).unwrap();
-            }
-            if ns > 0 {
-                std::fmt::write(&mut buff, format_args!("{}ns", ns)).unwrap();
-            }
-            s.serialize_str(&buff)
-        } else {
-            let arg: [u8;16] = self.to_le();
-            let slice = weird(&arg);
-            s.serialize_bytes(slice)
+        let (days,hours,minutes,seconds,ms,ns) = self.to_parts();
+        let mut buff = String::new();
+        if days > 0 {
+            std::fmt::write(&mut buff, format_args!("{}d", days)).unwrap();
         }
+        if hours > 0 {
+            std::fmt::write(&mut buff, format_args!("{}h", hours)).unwrap();
+        }
+        if minutes > 0 {
+            std::fmt::write(&mut buff, format_args!("{}m", minutes)).unwrap();
+        }
+        if seconds > 0 {
+            std::fmt::write(&mut buff, format_args!("{}s", seconds)).unwrap();
+        }
+        if ms > 0 {
+            std::fmt::write(&mut buff, format_args!("{}ms", ms)).unwrap();
+        }
+        if ns > 0 {
+            std::fmt::write(&mut buff, format_args!("{}ns", ns)).unwrap();
+        }
+        s.serialize_str(&buff)
     }
 }
 
@@ -162,11 +180,7 @@ impl<'de> de::Deserialize<'de> for NiceDuration {
     where
         D: de::Deserializer<'de>,
     {
-        if d.is_human_readable() {
-            d.deserialize_string(NiceDurationVisitor::default())
-        } else {
-            d.deserialize_bytes(NiceDurationVisitor::default())
-        }
+        d.deserialize_string(NiceDurationVisitor::default())
     }
 }
 
@@ -236,16 +250,6 @@ impl<'de> de::Visitor<'de> for NiceDurationVisitor {
         fmt.write_str("a string containing numbers following a marker of the span (days|hours|seconds|minutes|milliseconds|)")
     }
 
-    fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Self::Value,E> {
-        Ok(NiceDuration::from_le(v))
-    }
-    fn visit_borrowed_bytes<E: de::Error>(self, v: &'de [u8]) -> Result<Self::Value,E> {
-        Ok(NiceDuration::from_le(v))
-    }
-    fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> Result<Self::Value,E> {
-        Ok(NiceDuration::from_le(v.as_slice()))
-    }
-
     fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value,E> {
         deserialize_str(&v)
             .map(NiceDuration::from)
@@ -275,37 +279,5 @@ fn parse_duration() {
     for (s,expected) in DUT {
         let output = deserialize_str(s).unwrap();
         assert_eq!(output,*expected);
-    }
-}
-
-fn weird(arr: &[u8;16]) -> &[u8] {
-    let mut i = 15usize;
-    for idx in (0..=15usize).rev() {
-        if arr[idx] == 0 {
-            i -= 1;
-            continue;
-        } else {
-            break;
-        }
-    }
-    &arr[0..=i]
-}
-#[test]
-fn test_weird_slicing() {
-    const DUT: &'static [Duration] = &[
-        Duration::from_millis(5),
-        Duration::from_secs( 10 * 60 * 60 ),
-        Duration::from_secs(2),
-        Duration::from_millis( (10 * 60 * 60 * 1000) + (5 * 1000) + 15 ),
-    ];
-
-    for dur in DUT.iter() {
-        let base: Duration = dur.clone();
-        let nice: NiceDuration = NiceDuration::from(dur.clone());
-        assert_eq!(nice, base);
-
-        let out = nice.to_le();
-        let nice_2: NiceDuration = NiceDuration::from_le(&out);
-        assert_eq!(nice, nice_2);
     }
 }
