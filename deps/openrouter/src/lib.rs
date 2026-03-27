@@ -44,7 +44,7 @@ where
     S: Service<reqwest::Request, Response = reqwest::Response, Error = anyhow::Error>,
 {
     config: OpenRouterBaseConfig,
-    service: S,
+    pub service: S,
 }
 
 impl<S> OpenRouter<S>

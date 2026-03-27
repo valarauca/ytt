@@ -15,6 +15,11 @@ pub struct SingleHostReverseProxyConfig {
     pub path: String,
     pub url: Url,
 }
+impl IntoServiceConfig for SingleHostReverseProxyConfig {
+    fn into_service_config(&self) -> ServiceConfig {
+        ServiceConfig::new(self.clone())
+    }
+}
 impl ServiceReqs for SingleHostReverseProxyConfig {
 
     fn creates<'a>(&'a self) -> anyhow::Result<Vec<&'a str>> {

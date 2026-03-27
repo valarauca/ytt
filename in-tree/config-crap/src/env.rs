@@ -18,6 +18,13 @@ pub struct WithEnv<T> {
     value: T,
     from_config: String,
 }
+impl<T: std::fmt::Debug> std::fmt::Debug for WithEnv<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WithEnv")
+            .field(&self.from_config, &self.value)
+            .finish()
+    }
+}
 impl<T: Clone> Clone for WithEnv<T> {
     fn clone(&self) -> Self {
         Self {

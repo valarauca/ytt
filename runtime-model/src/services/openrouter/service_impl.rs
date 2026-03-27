@@ -3,77 +3,69 @@ use std::{
     task::{Context,Poll},
     sync::Arc,
 };
-use tower::{service_fn};
+use futures_util::FutureExt;
+use tower::{Service,service_fn};
 use openrouter::{
     OpenRouter,
     Completion, ChatCompletion,
     completions::{Response as ORResponse, Request as ORRequest},
 };
-use reqwest::{Request as HttpRequest,Response as HttpResponse};
-use futures_util::future::{Either,FutureExt,TryFuture,TryFutureExt};
-
-use super::config::OpenRouterConfiguration;
+use reqwest::{Request as ReqwestRequest, Response as ReqwestResponse};
+use url::{Url};
 
 use crate::{
     adapters::{
-        reconfigurable::ReconfigurableService,
-        RegisteredServiceTree,get_tree,
-        MaybeFuture,make_boxed,make_ready,
-        ServiceManagement,
-        BoxCloneSyncService,
-        path_split, 
+        s3service::{BoxCloneSyncService},
+        maybe_async::{make_boxed,make_ready,MaybeFuture},
+        service_tree::{get_tree,RegisteredServiceTree},
+        service_kind::{ServiceManagement},
+        reconfigurable::{ReconfigurableService},
     },
 };
 
-fn default_loader(config: OpenRouterConfiguration) -> ReconfigurableService<OpenRouterConfiguration,ORRequest,ORResponse> {
-    let func = service_fn(root_factory_impl);
-    let buffer = config.buffer;
-    ReconfigurableService::new(config, buffer, func)
+use super::config::OpenRouterConfiguration;
+
+pub fn load_client(
+    tree: RegisteredServiceTree,
+    config: OpenRouterConfiguration,
+) -> anyhow::Result<()> {
+    let path = config.path.clone();
+    let func = service_fn(factory_impl);
+    let service = ReconfigurableService::new(config, 1, func);
+    let manager = ServiceManagement::from(service);
+    tree.insert(&path, manager)?;
+    Ok(())
 }
 
-async fn root_factory_impl(config: OpenRouterConfiguration) -> Result<OpenRouterService,anyhow::Error> {
-    use openrouter::config::OpenRouterBaseConfig;
-
-    let base_config: OpenRouterBaseConfig = config.interior;
-    let chat: bool = config.chat_completions;
-
+async fn factory_impl(config: OpenRouterConfiguration) -> anyhow::Result<OpenRouterService> {
+    let chat_completion = config.chat_completion();
+    let base = config.make_base();
     let tree = get_tree();
-
-    let client: BoxCloneSyncService<HttpRequest,HttpResponse,anyhow::Error>  = {
-        let client_path = path_split(&config.client);
-        tree.get_service(&client_path,ServiceManagement::get_web_client).await?
-    };
+    let forward = tree.get_service(&config.client_path, ServiceManagement::get_reqwest_web_client).await?;
+    let client = OpenRouter::new(base, forward);
     Ok(OpenRouterService {
-        interior: OpenRouter::new(base_config,client),
-        routing_options: None,
-        chat_completion: chat,
+        interior: client,
+        chat_completion,
     })
 }
 
 
-
 #[derive(Clone)]
 pub struct OpenRouterService {
-    interior: OpenRouter<BoxCloneSyncService<HttpRequest,HttpResponse,anyhow::Error>>,
-    routing_options: Option<Arc<dyn Fn(&mut ORRequest) -> Result<(),anyhow::Error> + Send + Sync + 'static>>,
+    interior: OpenRouter<BoxCloneSyncService<ReqwestRequest,ReqwestResponse,anyhow::Error>>,
     chat_completion: bool,
 }
 impl tower::Service<ORRequest> for OpenRouterService {
     type Response = ORResponse;
     type Error = anyhow::Error;
     type Future = MaybeFuture<Result<Self::Response,Self::Error>>;
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
-        // This will tunnel through to `reqwest::Client` "eventually" so this hsould be fine
-        Poll::Ready(Ok(()))
+
+    fn poll_ready(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(),Self::Error>> {
+        self.interior.service.poll_ready(ctx)
     }
+
     fn call(&mut self, req: ORRequest) -> Self::Future {
-        let mut req = req;
-        if let Some(lambda) = &mut self.routing_options {
-            match (lambda)(&mut req) {
-                Ok(()) => { },
-                Err(e) => return make_ready(Err(e)),
-            };
-        }
+        let req = req;
         if self.chat_completion {
             self.interior.call(ChatCompletion(req))
         } else {
