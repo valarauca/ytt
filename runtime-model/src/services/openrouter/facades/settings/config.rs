@@ -76,6 +76,8 @@ pub struct ModelDefaults {
     pub reasoning: Option<Reasoning>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<ProviderPreferences>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -153,6 +155,7 @@ pub fn apply_defaults(request: &mut Request, default: &ModelDefaults) {
         stop,
         reasoning,
         provider,
+        prompt,
 	);
 }
 
@@ -171,5 +174,6 @@ pub fn override_values(request: &mut Request, default: &ModelDefaults) {
         stop,
         reasoning,
         provider,
+        prompt,
 	);
 }
