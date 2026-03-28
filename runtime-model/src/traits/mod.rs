@@ -8,6 +8,7 @@ pub use self::errors::{
     type_error,
     no_such_service,
     service_has_stopped,
+    not_a_lua_runtime,
 };
 
 pub type BoxedConfig = Box<dyn std::any::Any +'static + Send + Send>;

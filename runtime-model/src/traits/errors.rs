@@ -35,3 +35,9 @@ pub fn service_has_stopped(name: &'static str) -> anyhow::Error {
     )
 }
 
+pub fn not_a_lua_runtime<T: Any + ?Sized>() -> anyhow::Error {
+    anyhow::anyhow!(
+        "Expected lua runtime, got: {}",
+        std::any::type_name::<T>()
+    )
+}

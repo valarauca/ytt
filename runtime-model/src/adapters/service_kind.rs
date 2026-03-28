@@ -1,12 +1,13 @@
 use std::any::Any;
 
 use crate::{
-    traits::{BoxedConfig, not_an_http_client, not_an_http_server},
+    traits::{BoxedConfig, not_an_http_client, not_an_http_server, not_a_lua_runtime},
     adapters::reconfigurable::{Reconfig,ReconfigurableService},
     adapters::s3service::{BoxCloneSyncService},
     services::listenable::{ kinds::{ExtHttpRequest,ExtHttpResponse}, webshit::{Webshit}},
+    services::lua::repr::{LuaCall},
 };
-
+use serde_json::{Value as JSValue};
 use http::{Request as HttpRequest, Response as HttpResponse};
 use reqwest::{Request as ReqwestRequest, Response as ReqwestResponse};
 use axum::body::{Body as AxumBody};
@@ -24,6 +25,15 @@ pub enum ServiceManagement {
     OpenRouter(Box<dyn Reconfig<ORRequest,ORResponse> + 'static>),
     EndPoint(Box<dyn Reconfig<ExtHttpRequest,ExtHttpResponse> + 'static>),
     WebClient(Box<dyn Reconfig<ReqwestRequest,ReqwestResponse> + 'static>),
+    LuaRuntime(Box<dyn Reconfig<LuaCall,JSValue> + 'static>),
+}
+impl<C> From<ReconfigurableService<C,LuaCall,JSValue>> for ServiceManagement
+where
+    C: Any + Clone + PartialEq + Sync + Send + 'static,
+{
+    fn from(item: ReconfigurableService<C,LuaCall,JSValue>) -> Self {
+        Self::LuaRuntime(Box::new(item))
+    }
 }
 impl<C> From<ReconfigurableService<C,ReqwestRequest,ReqwestResponse>> for ServiceManagement
 where
@@ -80,6 +90,7 @@ impl ServiceManagement {
             Self::OpenRouter(client) => client.reconfig(config).await,
             Self::EndPoint(client) => client.reconfig(config).await,
             Self::WebClient(client) => client.reconfig(config).await,
+            Self::LuaRuntime(client) => client.reconfig(config).await,
         }
     }
 
@@ -111,6 +122,13 @@ impl ServiceManagement {
         match self {
             Self::OpenRouter(client) => Ok(client.get_service()),
             _ => Err(not_an_http_client::<Self>()),
+        }
+    }
+
+    pub fn get_luaruntime(&self) -> anyhow::Result<BoxCloneSyncService<LuaCall,JSValue,anyhow::Error>> {
+        match self {
+            Self::LuaRuntime(client) => Ok(client.get_service()),
+            _ => Err(not_a_lua_runtime::<Self>()),
         }
     }
 
