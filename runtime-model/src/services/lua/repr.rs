@@ -31,7 +31,7 @@ pub fn load_client(
 }
 
 async fn factory_impl(config: BasicLuaRuntimeConfig) -> anyhow::Result<LuaRT> {
-    let (runtime, map) = config.lua_options.initialize(&config.path,&config.code)?;
+    let (runtime, map) = config.lua_options.initialize(&config.path,&config.code, &config.public)?;
     let info = scc::HashIndex::new();
     for (k,v) in map.into_iter() {
         let valid = config.lua_options.validation.as_ref().map(|x: &HashMap<String,JSValue>| x.get(&k)).flatten();

@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap,BTreeSet},
+};
 
 use serde::{Deserialize,Serialize};
 use serde_json::{Value as JSValue};
@@ -20,6 +22,8 @@ use super::repr::load_client;
 pub struct BasicLuaRuntimeConfig {
     pub path: String,
     pub code: String,
+    #[serde(default)]
+    pub public: BTreeSet<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requires: Option<Vec<String>>,
     #[serde(default)]
@@ -37,7 +41,11 @@ impl ServiceReqs for BasicLuaRuntimeConfig {
     }
 
     fn requires<'a>(&'a self) -> anyhow::Result<Vec<Vec<&'a str>>> {
-        Ok(Vec::new())
+        let reqs = match &self.requires {
+            None => return Ok(Vec::new()),
+            Some(reqs) => reqs,
+        };
+        reqs.iter().map(|req| req.get_tree_path()).collect()
     }
 
     fn insert_to_tree(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output=anyhow::Result<()>> + Send + 'static>> {
@@ -75,7 +83,7 @@ fn get_bool(opt: &Option<Boolean>) -> bool {
 
 impl LuaConfigOption {
 
-    pub fn initialize(&self, name: &str, code: &str) -> anyhow::Result<(mlua::Lua,HashMap<String,mlua::Function>)> {
+    pub fn initialize(&self, name: &str, code: &str, required: &BTreeSet<String>) -> anyhow::Result<(mlua::Lua,HashMap<String,mlua::Function>)> {
         let mut stdlib = mlua::StdLib::ALL_SAFE;
         if get_bool(&self.disable_os) {
             stdlib ^= mlua::StdLib::OS;
@@ -119,15 +127,26 @@ impl LuaConfigOption {
         let mut functions = HashMap::new();
         // error doesn't matter
         let _ = chunk_env.for_each(|k: mlua::Value, v: mlua::Value| -> mlua::Result<()> {
-            let (s,f) = match (k,v) {
+            match (k,v) {
                 (mlua::Value::String(s),mlua::Value::Function(f)) => {
-                    (s,f)
+                    // skip non-utf8 symbols
+                    let s = match s.to_str().ok() {
+                        None => return Ok(()),
+                        Some(s) => s,
+                    };
+                    // skip things we aren't exporting
+                    if required.contains(s.as_ref()) {
+                        functions.insert(String::from(s.as_ref()), f);
+                    }
                 },
-                _ => return Ok(())
+                _ => { }
             };
-            functions.insert(s.to_string_lossy(), f);
             Ok(())
         });
+
+        if let Some(symbol) = required.iter().filter(|s| !functions.contains_key(s.as_str())).next() {
+            anyhow::bail!("symbol: '{}' did not get exported", symbol);
+        }
 
         Ok((lua, functions))
     }
@@ -164,13 +183,14 @@ mod tests {
 			    end
 			end "#;
         let base_config = LuaConfigOption::default();
+        let set = BTreeSet::new();
 
 		let true_config = base_config.inject_env("some_variable", JSValue::from(true));
-		let (_,funcs) = true_config.initialize("idk", CODE).unwrap();
+		let (_,funcs) = true_config.initialize("idk", CODE, &set).unwrap();
 		assert!(funcs.contains_key("foo"));
 
 		let false_config = base_config.inject_env("some_variable", JSValue::from(false));
-		let (_,funcs) = false_config.initialize("idk", CODE).unwrap();
+		let (_,funcs) = false_config.initialize("idk", CODE, &set).unwrap();
 		assert!(funcs.contains_key("bar"));
     }
 }
