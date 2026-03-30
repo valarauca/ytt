@@ -20,6 +20,8 @@ use super::repr::load_client;
 pub struct BasicLuaRuntimeConfig {
     pub path: String,
     pub code: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires: Option<Vec<String>>,
     #[serde(default)]
     pub lua_options: LuaConfigOption,
 }
@@ -55,15 +57,15 @@ impl ServiceReqs for BasicLuaRuntimeConfig {
 
 #[derive(Clone,Serialize,Deserialize,PartialEq,Debug,Default)]
 pub struct LuaConfigOption {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_limit: Option<usize>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<Boolean>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_env: Option<HashMap<String,JSValue>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disable_os: Option<Boolean>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validation: Option<HashMap<String,JSValue>>,
 }
 
