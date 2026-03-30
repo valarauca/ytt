@@ -12,6 +12,16 @@ use serde::ser::{self};
 pub struct HHeaderName(
     pub HeaderName
 );
+impl PartialOrd for HHeaderName {
+    fn partial_cmp(&self, arg: &Self) -> Option<std::cmp::Ordering> {
+        self.0.as_str().partial_cmp(arg.0.as_str())
+    }
+}
+impl Ord for HHeaderName {
+    fn cmp(&self, arg: &Self) -> std::cmp::Ordering {
+        self.0.as_str().cmp(arg.0.as_str())
+    }
+}
 impl ser::Serialize for HHeaderName {
     fn serialize<S: ser::Serializer>(&self, s: S) -> Result<S::Ok,S::Error> {
         s.serialize_str(self.0.as_str())

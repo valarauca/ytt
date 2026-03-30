@@ -2,19 +2,22 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize,Serialize};
 use url::Url;
+use serde_json::{Value as JSValue};
 
 use crate::services::openrouter::facades::settings::config::{ModelDefaults};
 use crate::primatives::headers::{HHeaderName};
 
 use openrouter::completions::request::FunctionDescription;
-use config_crap::template::string_or_template::{StringOrTemplate};
-use config_crap::boolean::{Boolean};
+use config_crap::{Boolean, StringOrTemplate};
 
+/// Defines an individual tool
 #[derive(Clone,Deserialize,PartialEq,Debug)]
 pub struct ToolConfig {
     pub client: String,
     pub path: String,
-    pub desc: FunctionDescription,
+    pub default_name: Option<String>,
+    pub default_description: Option<String>,
+    pub validation: JSValue,
     pub info: Schemantics,
 }
 
@@ -26,9 +29,10 @@ pub enum Schemantics {
     OpenRouter {
         model_defaults: ModelDefaults,
     },
+    #[serde(rename = "http-get", alias = "get")]
     HttpGet {
         url: StringOrTemplate,
-        //headers: BTreeMap<
+        headers: BTreeMap<HHeaderName, StringOrTemplate>,
     },
 }
 

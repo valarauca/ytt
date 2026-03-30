@@ -2,5 +2,5 @@
 pub mod web_request;
 pub mod listenable;
 pub mod openrouter;
-pub mod tool;
+//pub mod tool;
 pub mod lua;
