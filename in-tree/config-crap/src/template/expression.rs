@@ -6,7 +6,7 @@ use serde::ser::{Serialize, Serializer};
 use crate::template::globals::{is_valid_expression};
 
 /// Expression permits serializing/deserializating minijinja templates
-#[derive(Clone,Debug)]
+#[derive(Clone,Debug,PartialEq,Eq,PartialOrd,Ord,Hash)]
 pub struct Expression {
     data: String,
 }

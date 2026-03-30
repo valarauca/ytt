@@ -74,6 +74,40 @@ impl std::ops::Deref for Regexp {
         &self.regexp
     }
 }
+impl PartialEq for Regexp {
+    fn eq(&self, other: &Self) -> bool {
+        self.regexp.as_str().eq(other.regexp.as_str())
+    }
+}
+impl PartialEq<str> for Regexp {
+    fn eq(&self, other: &str) -> bool {
+        self.regexp.as_str().eq(other)
+    }
+}
+impl PartialEq<String> for Regexp {
+    fn eq(&self, other: &String) -> bool {
+        self.regexp.as_str().eq(other.as_str())
+    }
+}
+impl Eq for Regexp { }
+impl PartialOrd for Regexp {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.regexp.as_str().partial_cmp(other.regexp.as_str())
+    }
+}
+impl Ord for Regexp {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.regexp.as_str().cmp(other.regexp.as_str())
+    }
+}
+impl std::hash::Hash for Regexp {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        self.regexp.as_str().hash(state)
+    }
+}
 
 /// Useful for inspecting regexes when you expect
 /// them to capture specific values

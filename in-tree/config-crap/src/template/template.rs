@@ -5,7 +5,7 @@ use serde::ser::{Serialize, Serializer};
 use crate::template::globals::{is_valid_template};
 
 /// Template permits serializing/deserializating minijinja templates
-#[derive(Clone,Debug)]
+#[derive(Clone,Debug,PartialEq,Eq,PartialOrd,Ord,Hash)]
 pub struct Template {
     data: String,
 }

@@ -6,7 +6,7 @@ use crate::template::template::{Template};
 ///
 /// Will attempt to parse the input as a minijinja::Template
 /// provided there is at least 1 pair of `{% %}` or `{{ }}`.
-#[derive(Clone,Debug)]
+#[derive(Clone,Debug,PartialEq,Eq,PartialOrd,Ord,Hash)]
 pub enum StringOrTemplate {
     String(String),
     Template(Template),
