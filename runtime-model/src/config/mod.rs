@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::Context;
-use serde::{Serialize,Deserialize};
+use serde::{Deserialize};
 
 use crate::{
     adapters::{
@@ -17,6 +17,8 @@ use crate::{
         web_request::config::{ClientLoader},
     },
 };
+
+pub mod runtime;
 
 
 #[derive(Deserialize,Clone,PartialEq,Debug)]
@@ -32,18 +34,36 @@ pub enum ConfigMember {
 
 #[derive(Deserialize,Clone,PartialEq,Debug)]
 pub struct Configuration {
-    pub socket: SocketAddr,
-    pub routes: BTreeMap<String,String>,
+    #[serde(default)]
+    pub rt: self::runtime::TokioRuntime,
     pub services: Vec<ConfigMember>,
 }
 impl Configuration {
 
+    /*
+     * Initially the configuration is loaded when the program is running synchronously
+     * as the configuration specifies how to setup the runtime
+     *
+     * It therefore has some sync and async interfaces.
+     *
+     */
+
+    /// Perform a synchronous load
+    pub fn sync_load(path: String) -> anyhow::Result<Self> {
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to open config file: '{}'", &path))?;
+        Ok(serde_yaml::from_str(&text)?)
+    }
+
+    /// Create a runtime from the defined configuration
+    pub fn make_rt(&self) -> Result<tokio::runtime::Runtime,std::io::Error> {
+        self.rt.build()
+    }
+
     /// Load the configuration from some path
     pub async fn load(path: String) -> anyhow::Result<Self> {
         let handle = tokio::task::spawn_blocking(move || -> anyhow::Result<Self> {
-            let text = std::fs::read_to_string(&path)
-                .with_context(|| format!("failed to open config file: '{}'", &path))?;
-            Ok(serde_yaml::from_str(&text)?)
+            Self::sync_load(path)
         });
         Ok(handle.await.unwrap()?)
     }

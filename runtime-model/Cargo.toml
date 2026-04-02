@@ -21,7 +21,7 @@ tokio = { version = "1.49.0", features = ["full"] }
 tower = { version = "0.5.3", features = ["make", "util"] }
 futures-util = { version = "0.3.31", default-features = false, features = ["alloc"] }
 seahash = "4.1.0"
-tokio-stream = { version = "0.1.18", features = ["sync"] }
+tokio-stream = { version = "0.1.18", features = ["net", "sync"] }
 url = "2.5.8"
 serde_json = "1.0.149"
 anyhow = "1.0.100"
@@ -31,3 +31,10 @@ jsonschema = "0.45.0"
 mlua = { version = "0.11.6", default-features = false, features = ["luau", "luau-jit", "async", "anyhow", "serde", "send"] }
 scc = "3.6.12"
 serde_yaml = "0.9.34"
+tracing = "0.1.44"
+socket2 = "0.6.3"
+either = { version = "1.15.0", features = ["serde"] }
+hyper-util = { version = "0.1.20", features = ["tokio", "tracing", "server", "server-auto", "server-graceful", "http1", "http2", "service"] }
+rustls-pemfile = "2.2.0"
+rustls = "0.23.37"
+tokio-rustls = "0.26.4"

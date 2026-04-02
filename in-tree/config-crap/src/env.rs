@@ -18,6 +18,11 @@ pub struct WithEnv<T> {
     value: T,
     from_config: String,
 }
+impl<T> WithEnv<T> {
+    pub fn into_inner(self) -> T {
+        self.value
+    }
+}
 impl<T: std::fmt::Debug> std::fmt::Debug for WithEnv<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WithEnv")
