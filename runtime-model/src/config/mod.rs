@@ -15,6 +15,8 @@ use crate::{
         openrouter::facades::settings::config::{OpenRouterSettingsConfig},
         openrouter::config::{OpenRouterConfiguration},
         web_request::config::{ClientLoader},
+        web_request::facades::single_host::config::{SingleHostReverseProxyConfig},
+        router::config::{RouterConfig},
     },
 };
 
@@ -30,6 +32,44 @@ pub enum ConfigMember {
     ModelDefaults(OpenRouterSettingsConfig),
     #[serde(alias="http-client")]
     HttpClient(ClientLoader),
+    #[serde(alias="single-host-reverse-proxy")]
+    SingleHostReverseProxy(SingleHostReverseProxyConfig),
+    #[serde(alias="router")]
+    Router(RouterConfig),
+}
+impl ServiceReqs for ConfigMember {
+    /// Where this service will be inserted into the tree
+    fn creates<'a>(&'a self) -> anyhow::Result<Vec<&'a str>> {
+        match self {
+            Self::OpenRouter(a) => a.creates(),
+            Self::ModelDefaults(a) => a.creates(),
+            Self::HttpClient(a) => a.creates(),
+            Self::SingleHostReverseProxy(a) => a.creates(),
+            Self::Router(a) => a.creates(),
+        }
+    }
+
+    /// What this service needs to operate
+    fn requires<'a>(&'a self) -> anyhow::Result<Vec<Vec<&'a str>>> {
+        match self {
+            Self::OpenRouter(a) => a.requires(),
+            Self::ModelDefaults(a) => a.requires(),
+            Self::HttpClient(a) => a.requires(),
+            Self::SingleHostReverseProxy(a) => a.requires(),
+            Self::Router(a) => a.requires(),
+        }
+    }
+
+    /// Inser this type into the tree
+    fn insert_to_tree(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output=anyhow::Result<()>> + Send + 'static>> {
+        match self {
+            Self::OpenRouter(a) => a.insert_to_tree(),
+            Self::ModelDefaults(a) => a.insert_to_tree(),
+            Self::HttpClient(a) => a.insert_to_tree(),
+            Self::SingleHostReverseProxy(a) => a.insert_to_tree(),
+            Self::Router(a) => a.insert_to_tree(),
+        }
+    }
 }
 
 #[derive(Deserialize,Clone,PartialEq,Debug)]
