@@ -38,3 +38,4 @@ hyper-util = { version = "0.1.20", features = ["tokio", "tracing", "server", "se
 rustls-pemfile = "2.2.0"
 rustls = "0.23.37"
 tokio-rustls = "0.26.4"
+matchit = "0.9.2"

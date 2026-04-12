@@ -132,18 +132,9 @@ impl ServiceManagement {
         }
     }
 
-    /*
-     * This -should- return an HTTP listener
-     *
-     * I don't know exactly how well this fits into the current model
-     * TODO: reconsider/re-work
-     *
-     */
-
-    pub fn get_endpoint(&self) -> anyhow::Result<Webshit> {
-
+    pub fn get_endpoint(&self) -> anyhow::Result<BoxCloneSyncService<ExtHttpRequest,ExtHttpResponse,anyhow::Error>> {
         match self {
-            Self::EndPoint(client) => Ok(Webshit::from(client.get_service())),
+            Self::EndPoint(client) => Ok(client.get_service()),
             _ => Err(not_an_http_server::<Self>()),
         }
     }
